@@ -1,0 +1,39 @@
+#version 450
+
+#extension GL_KHR_shader_subgroup_shuffle: enable
+
+layout(local_size_x = 32) in;
+
+layout(set = 0, binding = 0) buffer BM {
+    uint[32] bm;
+};
+
+uint shuffle_round(uint lbm, uint m, uint s) {
+    uint b = subgroupShuffleXor(lbm, s);
+    uint c;
+    if ((gl_GlobalInvocationID.x & s) == 0) {
+        c = b << s;
+    } else {
+        m = ~m;
+        c = b >> s;
+    }
+    return (lbm & m) | (c & ~m);
+}
+
+void main() {
+    uint dst_tid = gl_GlobalInvocationID.x;
+
+    uint lbm = bm[dst_tid];
+
+    // subgroupBarrier(); ?
+
+    lbm = shuffle_round(lbm, 0xffff, 16);
+    lbm = shuffle_round(lbm, 0xff00ff, 8);
+    lbm = shuffle_round(lbm, 0xf0f0f0f, 4);
+    lbm = shuffle_round(lbm, 0x33333333, 2);
+    lbm = shuffle_round(lbm, 0x55555555, 1);
+
+    // subgroupBarrier(); ?
+
+    bm[dst_tid] = lbm;
+}

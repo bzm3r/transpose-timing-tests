@@ -1,0 +1,31 @@
+[package]
+name = "transpose-timing-tests"
+version = "0.1.0"
+authors = ["bhmerchant@gmail.com <bhmerchant@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = []
+dx12 = ["gfx-backend-dx12"]
+vulkan = ["gfx-backend-vulkan"]
+
+[dependencies]
+log = "0.4"
+gfx-hal = "0.4.1"
+gfx-backend-vulkan = { version = "0.4.2", optional=true }
+gfx-backend-dx12 = { "0.4.2" = "0.4.2", optional=true }
+gfx-auxil = "0.1.0"
+glsl-to-spirv = "0.1.4"
+spirv_cross = "0.17.1"
+hassle-rs = "0.3.0"
+winapi = { version = "0.3.7", features = ["d3dcommon", "d3d12"] }
+wio = "0.2.2"
+
+
+[target.'cfg(debug_assertions)'.dependencies]
+env_logger = "0.6"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+glsl-to-spirv = "0.1.4"

@@ -1,0 +1,21 @@
+#version 450
+#extension GL_KHR_shader_subgroup_ballot: enable
+
+layout(local_size_x = 32) in;
+
+layout(set = 0, binding = 0) buffer BM {
+    uint[32] bm;
+};
+
+void main() {
+    uint tix = gl_GlobalInvocationID.x;
+    uint input_mask = bm[tix];
+    uint output_mask;
+    for (uint i = 0; i < 32; i++) {
+        uint shift_mask = 1 << i;
+        uvec4 vote = subgroupBallot((input_mask & shift_mask) != 0);
+        if (i == tix) {
+            bm[tix] = vote[0];
+        }
+    }
+}

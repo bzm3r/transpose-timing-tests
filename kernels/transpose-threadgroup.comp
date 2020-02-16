@@ -1,0 +1,72 @@
+#version 450
+layout(local_size_x = 32) in;
+
+layout(set = 0, binding = 0) buffer BM {
+    uint[32] bm;
+};
+
+shared uint[32] tg_bm;
+
+uint shuffle_round(uint dst_tid, uint a, uint b, uint m, uint s) {
+    uint c;
+    if ((dst_tid & s) == 0) {
+        c = b << s;
+    } else {
+        m = ~m;
+        c = b >> s;
+    }
+    return (a & m) | (c & ~m);
+}
+
+void main() {
+    uint dst_tid = gl_GlobalInvocationID.x;
+    uint s;
+    uint src_tid;
+
+    if (dst_tid == 0) {
+        tg_bm = bm;
+    }
+
+    // https://stackoverflow.com/questions/27867464/glsl-compute-shader-synchronization
+    memoryBarrierShared();
+    barrier();
+
+    s = 16;
+    src_tid = dst_tid^s;
+    tg_bm[dst_tid] = shuffle_round(dst_tid, tg_bm[dst_tid], tg_bm[src_tid], 0xffff, s);
+
+    memoryBarrierShared();
+    barrier();
+
+    s = 8;
+    src_tid = dst_tid^s;
+    tg_bm[dst_tid] = shuffle_round(dst_tid, tg_bm[dst_tid], tg_bm[src_tid], 0xff00ff, s);
+
+    memoryBarrierShared();
+    barrier();
+
+    s = 4;
+    src_tid = dst_tid^s;
+    tg_bm[dst_tid] = shuffle_round(dst_tid, tg_bm[dst_tid], tg_bm[src_tid], 0xf0f0f0f, s);
+
+    memoryBarrierShared();
+    barrier();
+
+    s = 2;
+    src_tid = dst_tid^s;
+    tg_bm[dst_tid] = shuffle_round(dst_tid, tg_bm[dst_tid], tg_bm[src_tid], 0x33333333, s);
+
+    memoryBarrierShared();
+    barrier();
+
+    s = 1;
+    src_tid = dst_tid^s;
+    tg_bm[dst_tid] = shuffle_round(dst_tid, tg_bm[dst_tid], tg_bm[src_tid], 0x55555555, s);
+
+    memoryBarrierShared();
+    barrier();
+
+    if (dst_tid == 0) {
+        bm = tg_bm;
+    }
+}
