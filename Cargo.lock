@@ -106,12 +106,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "com-rs"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf43edc576402991846b093a7ca18a3477e0ef9c588cde84964b5d3e43016642"
-
-[[package]]
 name = "core-foundation"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -230,7 +224,7 @@ checksum = "572eee952a9a23c99cfe3e4fd95d277784058a89ac3c77ff6fa3d80a4e321919"
 dependencies = [
  "fxhash",
  "gfx-hal",
- "spirv_cross 0.16.0",
+ "spirv_cross",
 ]
 
 [[package]]
@@ -247,7 +241,7 @@ dependencies = [
  "range-alloc",
  "raw-window-handle",
  "smallvec",
- "spirv_cross 0.16.0",
+ "spirv_cross",
  "winapi",
 ]
 
@@ -290,18 +284,6 @@ dependencies = [
  "cmake",
  "sha2",
  "tempfile",
-]
-
-[[package]]
-name = "hassle-rs"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e45f2cba62c749d0017e6c6f9710a53872d87a4fd38846267cd20244b12bc69"
-dependencies = [
- "bitflags",
- "com-rs",
- "libloading",
- "winapi",
 ]
 
 [[package]]
@@ -554,17 +536,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spirv_cross"
-version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da75d6051e33083811473411a39069837d294845eaff5a4604845bc8b03ce759"
-dependencies = [
- "cc",
- "js-sys",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "syn"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -612,16 +583,11 @@ name = "transpose-timing-tests"
 version = "0.1.0"
 dependencies = [
  "env_logger",
- "gfx-auxil",
  "gfx-backend-dx12",
  "gfx-backend-vulkan",
  "gfx-hal",
  "glsl-to-spirv",
- "hassle-rs",
  "log",
- "spirv_cross 0.17.1",
- "winapi",
- "wio",
 ]
 
 [[package]]
@@ -726,12 +692,3 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "wio"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d129932f4644ac2396cb456385cbf9e63b5b30c6e8dc4820bdca4eb082037a5"
-dependencies = [
- "winapi",
-]

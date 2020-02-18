@@ -1,24 +1,12 @@
+#[cfg(feature = "dx12")]
 extern crate gfx_backend_dx12 as dx12back;
+#[cfg(feature = "vulkan")]
 extern crate gfx_backend_vulkan as vkback;
+
 extern crate gfx_hal as hal;
-extern crate gfx_auxil as auxil;
-extern crate spirv_cross;
 
 use std::{fs, ptr, slice, str::FromStr, path::Path};
-use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, Device};
-use spirv_cross::{spirv::{Ast as SpirvAst, Module as SpirvMod}, hlsl, ErrorCode as SCError};
-
-use winapi::um::{d3d12, d3dcommon};
-use wio::com::ComPtr;
-
-#[derive(Clone)]
-pub struct Blob(pub ComPtr<d3dcommon::ID3DBlob>);
-
-#[derive(Clone)]
-pub struct ShaderByteCode {
-    pub bytecode: d3d12::D3D12_SHADER_BYTECODE,
-    blob: Option<Blob>,
-}
+use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso};
 
 type InstanceName = String;
 
@@ -297,32 +285,4 @@ unsafe fn create_buffer<B: hal::Backend>(
     device.bind_buffer_memory(&memory, 0, &mut buffer).unwrap();
 
     (memory, buffer, requirements.size)
-}
-
-
-fn create_SM6_dxil(
-    name: &str,
-    source: &str,
-    entry_point: &str,
-) -> Vec<u8> {
-    hassle_rs::compile_hlsl(name, source, entry_point, "cs_6_0", &["/Zi"], &[])
-        .and_then(|shader| hassle_rs::validate_dxil(&shader))?
-}
-
-fn glsl_to_hlsl(path: Path) -> String {
-    let glsl = fs::read_to_string(p).unwrap();
-    let file = glsl_to_spirv::compile(&glsl, glsl_to_spirv::ShaderType::Compute).unwrap();
-    let spirv_words: Vec<u32> = pso::read_spirv(file).expect("could not read SPIR-V");
-
-    let spirv_mod = SpirvMod::from_words(&spirv_words);
-    let mut ast = SpirvAst::<hlsl::Target>::parse(&spirv_mod)?;
-    ast.compile()?
-}
-
-fn create_SM6_shader_module(path: Path) -> ShaderModule {
-    let src = glsl_to_hlsl(path);
-    let dxil_bytes = create_SM6_dxil("", &src, "main");
-
-    let mut shader_blob_ptr: *mut d3dcommon::ID3DBlob = ptr::null_mut();
-
 }
