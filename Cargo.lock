@@ -588,6 +588,7 @@ dependencies = [
  "gfx-hal",
  "glsl-to-spirv",
  "log",
+ "rand",
 ]
 
 [[package]]
