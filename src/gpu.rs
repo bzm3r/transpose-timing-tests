@@ -1,18 +1,15 @@
 #[cfg(feature = "dx12")]
-extern crate gfx_backend_dx12 as dx12back;
-#[cfg(feature = "vulkan")]
-extern crate gfx_backend_vulkan as vkback;
+extern crate gfx_backend_dx12 as dx12_back;
+#[cfg(feature = "vk")]
+extern crate gfx_backend_vulkan as vk_back;
 
 extern crate gfx_hal as hal;
 
 use crate::bitmats::BitMatrix;
 use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, query};
-use std::{
-    fmt, fs,
-    path::{Path, PathBuf},
-    ptr, slice,
-    str::FromStr,
-};
+#[cfg(debug_assertions)]
+use std::fs;
+use std::{fmt, ptr, slice};
 
 #[derive(Clone)]
 pub enum KernelType {
@@ -41,36 +38,31 @@ impl fmt::Display for BackendVariant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BackendVariant::Vk => write!(f, "{}", "vk"),
-            BackendVariant::Dx12 => write!(f, "{}", "dx12")
+            BackendVariant::Dx12 => write!(f, "{}", "dx12"),
         }
     }
 }
 
 #[derive(Clone)]
 pub struct Task {
-    name: String,
-    num_bms: usize,
-    workgroup_size: [usize; 3],
-    kernel_type: KernelType,
-    backend: BackendVariant,
-    dispatch_times: Vec<f64>,
+    pub name: String,
+    pub num_bms: usize,
+    pub workgroup_size: [usize; 3],
+    pub kernel_type: KernelType,
+    pub backend: BackendVariant,
+    pub dispatch_times: Vec<f64>,
 }
 
 impl Task {
     pub fn avg_dispatch_time(&self) -> f64 {
-        self.dispatch_times.iter().sum()/(self.dispatch_times.len() as f64)
+        self.dispatch_times.iter().sum::<f64>() / (self.dispatch_times.len() as f64)
     }
 }
 
 impl fmt::Display for Task {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "name: {}\nnum_bms: {}\n workgroup size: ({}, {}, {})\n kernel type: {}, backend: {}, avg dispatch time: {} ms", self.name, self.num_bms, self.workgroup_size[0], self.workgroup_size[1], self.workgroup_size[1], self.kernel_type, self.backend, self.avg_dispatch_time());
-        match self {
-            Kernel::Threadgroup(_) => write!(f, "threadgroup", self.x, self.y),
-            Kernel::Ballot => write!(f, "ballot", self.x, self.y),
-            Kernel::Shuffle => write!(f, "shuffle", self.x, self.y),
-        }
-    }    
+        write!(f, "name: {}\nnum_bms: {}\n workgroup size: ({}, {}, {})\n kernel type: {}, backend: {}, avg dispatch time: {} ms", self.name, self.num_bms, self.workgroup_size[0], self.workgroup_size[1], self.workgroup_size[1], self.kernel_type, self.backend, self.avg_dispatch_time())
+    }
 }
 
 fn materialize_kernel(task: &Task) -> String {
@@ -81,18 +73,24 @@ fn materialize_kernel(task: &Task) -> String {
     match task.kernel_type {
         KernelType::Threadgroup => {
             kernel = kernel.replace("~NUM_BMS~", &format!("{}", task.num_bms));
-            kernel = kernel.replace("~WG_SIZE~", &format!("{}", task.workgroup_size));
+            kernel = kernel.replace("~WG_SIZE~", &format!("{}", task.workgroup_size[0]));
         }
         _ => unimplemented!(),
     }
+
     #[cfg(debug_assertions)]
     std::fs::write(
         format!(
-            "kernels/transpose-{}-NBM={}_WGS={}.comp",
-            task.kernel_type, task.num_bms, task.workgroup_size
+            "kernels/transpose-{}-NBM={}_WGS=({},{},{}).comp",
+            task.kernel_type,
+            task.num_bms,
+            task.workgroup_size[0],
+            task.workgroup_size[1],
+            task.workgroup_size[2]
         ),
         &kernel,
-    );
+    )
+    .unwrap();
 
     kernel
 }
@@ -100,19 +98,21 @@ fn materialize_kernel(task: &Task) -> String {
 pub fn run_timing_tests(task: &mut Task, num_execs: usize) {
     match task.backend {
         BackendVariant::Vk => {
-            #[!cfg(feature = "dx12")]
+            #[cfg(not(feature = "vk"))]
             panic!("vulkan backend is not enabled");
 
-            let instance_name = format!("Vk-{}", task.kernel_type);
-            execute_task::<vk::Backend>(instance_name, task, num_execs);
+            let instance_name = format!("vk-{}", task.kernel_type);
+            #[cfg(feature = "vk")]
+            execute_task::<vk_back::Backend>(instance_name, task, num_execs);
         }
         BackendVariant::Dx12 => match task.kernel_type {
             KernelType::Threadgroup => {
-                #[!cfg(feature = "dx12")]
+                #[cfg(not(feature = "dx12"))]
                 panic!("dx12 backend is not loaded");
 
-                let instance_name = format!("Vk-{}", task.kernel_type);
-                execute_task::<vk::Backend>(instance_name, task, num_execs);
+                let instance_name = format!("dx12-{}", task.kernel_type);
+                #[cfg(feature = "dx12")]
+                execute_task::<dx12_back::Backend>(instance_name, task, num_execs);
             }
             _ => {
                 panic!("DX12 backend can only run threadgroup kernel");
@@ -121,27 +121,20 @@ pub fn run_timing_tests(task: &mut Task, num_execs: usize) {
     }
 }
 
-fn execute_task<B: hal::Backend>(
-    instance_name: String,
-    task: &mut Task,
-    num_execs: usize,
-)  {
+fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_execs: usize) {
     #[cfg(debug_assertions)]
     env_logger::init();
 
-    let bms: Vec<BitMatrix> = (0..task.num_bms)
-        .iter()
-        .map(|_| BitMatrix::new_random())
-        .collect();
-    let tbms: Vec<BitMatrix> = bms.iter().map(|bm| bm.transpose()).colelct();
-    let u32_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
-    let mut flat_u32_bms: Vec<u32> = Vec::new();
-    u32_bms
-        .iter()
-        .map(|bm| flat_u32_bms.extend_from_slice(&bm.as_u32s()));
+    let bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_random()).collect();
+    let tbms: Vec<BitMatrix> = bms.iter().map(|bm| bm.transpose()).collect();
+    let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
+    let mut flat_raw_bms: Vec<u32> = Vec::new();
+    for raw_bm in raw_bms.iter() {
+        flat_raw_bms.extend_from_slice(&raw_bm[..]);
+    }
 
     let instance = B::Instance::create(&instance_name, 1)
-        .expect(format!("Failed to create {} instance!", &instance_name));
+        .expect(&format!("Failed to create {} instance!", &instance_name));
 
     let adapter = instance
         .enumerate_adapters()
@@ -179,12 +172,7 @@ fn execute_task<B: hal::Backend>(
             device.create_descriptor_set_layout(
                 &[pso::DescriptorSetLayoutBinding {
                     binding: 0,
-                    ty: pso::DescriptorType::Buffer {
-                        ty: pso::BufferDescriptorType::Storage { read_only: false },
-                        format: pso::BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                    },
+                    ty: pso::DescriptorType::StorageBuffer,
                     count: 1,
                     stage_flags: pso::ShaderStageFlags::COMPUTE,
                     immutable_samplers: false,
@@ -213,12 +201,7 @@ fn execute_task<B: hal::Backend>(
             device.create_descriptor_pool(
                 1,
                 &[pso::DescriptorRangeDesc {
-                    ty: pso::DescriptorType::Buffer {
-                        ty: pso::BufferDescriptorType::Storage { read_only: false },
-                        format: pso::BufferDescriptorFormat::Structured {
-                            dynamic_offset: false,
-                        },
-                    },
+                    ty: pso::DescriptorType::StorageBuffer,
                     count: 1,
                 }],
                 pso::DescriptorPoolCreateFlags::empty(),
@@ -229,52 +212,40 @@ fn execute_task<B: hal::Backend>(
     };
 
     let stride = std::mem::size_of::<u32>() as u64;
-    let (staging_memory, staging_buffer, staging_size) = unsafe {
-        create_buffer::<B::Backend>(
+    let (staging_mem, staging_buf, staging_size) = unsafe {
+        create_buffer::<B>(
             &device,
             &memory_properties.memory_types,
             memory::Properties::CPU_VISIBLE | memory::Properties::COHERENT,
             buffer::Usage::TRANSFER_SRC | buffer::Usage::TRANSFER_DST,
             stride,
-            flat_u32_bms.len() as u64,
+            flat_raw_bms.len() as u64,
         )
     };
 
     unsafe {
-        let mapping = device.map_memory(&staging_memory, 0..staging_size).unwrap();
+        let mapping = device.map_memory(&staging_mem, 0..staging_size).unwrap();
 
         ptr::copy_nonoverlapping(
-            flat_u32_bms.as_ptr() as *const u8,
+            flat_raw_bms.as_ptr() as *const u8,
             mapping,
-            flat_u32_bms.len() * stride as usize,
+            flat_raw_bms.len() * stride as usize,
         );
-        device.uinmap_memory(&staging_memory);
+        device.unmap_memory(&staging_mem);
     }
 
-    let (device_memory, device_buffer, _device_buffer_size) = unsafe {
-        create_buffer::<B::Backend>(
+    let (device_mem, device_buf, _device_buffer_size) = unsafe {
+        create_buffer::<B>(
             &device,
             &memory_properties.memory_types,
             memory::Properties::DEVICE_LOCAL,
             buffer::Usage::TRANSFER_SRC | buffer::Usage::TRANSFER_DST | buffer::Usage::STORAGE,
             stride,
-            flat_u32_bms.len() as u64,
+            flat_raw_bms.len() as u64,
         )
     };
 
-    let desc_set;
-
-    unsafe {
-        desc_set = desc_pool.allocate_set(&set_layout).unwrap();
-        device.write_descriptor_sets(Some(pso::DescriptorSetWrite {
-            set: &desc_set,
-            binding: 0,
-            array_offset: 0,
-            descriptors: Some(pso::Descriptor::Buffer(&device_buffer, None..None)),
-        }));
-    };
-
-    let mut command_pool =
+    let mut cmd_pool =
         unsafe { device.create_command_pool(family.id(), pool::CommandPoolCreateFlags::empty()) }
             .expect("Can't create command pool");
     let query_pool = unsafe { device.create_query_pool(query::Type::Timestamp, 2).unwrap() };
@@ -282,124 +253,130 @@ fn execute_task<B: hal::Backend>(
 
     assert_eq!(task.num_bms % task.workgroup_size[0], 0);
     let num_dispatch_groups = task.num_bms / task.workgroup_size[0];
-    let timing_qp = device.create_query_pool();
     for _ in 0..num_execs {
         unsafe {
-            let mut command_buffer = command_pool.allocate_one(command::Level::Primary);
-            command_buffer.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
-            command_buffer.copy_buffer(
-                &staging_buffer,
-                &device_buffer,
+            let desc_set = desc_pool.allocate_set(&set_layout).unwrap();
+            device.write_descriptor_sets(Some(pso::DescriptorSetWrite {
+                set: &desc_set,
+                binding: 0,
+                array_offset: 0,
+                descriptors: Some(pso::Descriptor::Buffer(&device_buf, None..None)),
+            }));
+            let mut cmd_buf = cmd_pool.allocate_one(command::Level::Primary);
+            cmd_buf.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
+            cmd_buf.reset_query_pool(&query_pool, 0..2);
+            cmd_buf.copy_buffer(
+                &staging_buf,
+                &device_buf,
                 &[command::BufferCopy {
                     src: 0,
                     dst: 0,
-                    size: stride * numbers.len() as u64,
+                    size: stride * flat_raw_bms.len() as u64,
                 }],
             );
-            command_buffer.pipeline_barrier(
+            cmd_buf.pipeline_barrier(
                 pso::PipelineStage::TRANSFER..pso::PipelineStage::COMPUTE_SHADER,
                 memory::Dependencies::empty(),
                 Some(memory::Barrier::Buffer {
                     states: buffer::Access::TRANSFER_WRITE
                         ..buffer::Access::SHADER_READ | buffer::Access::SHADER_WRITE,
                     families: None,
-                    target: &device_buffer,
+                    target: &device_buf,
                     range: None..None,
                 }),
             );
-            command_buffer.bind_compute_pipeline(&pipeline);
-            command_buffer.bind_compute_descriptor_sets(&pipeline_layout, 0, &[desc_set], &[]);
-            command_buffer.write_timestamp(
+            cmd_buf.bind_compute_pipeline(&pipeline);
+            cmd_buf.bind_compute_descriptor_sets(&pipeline_layout, 0, &[desc_set], &[]);
+            cmd_buf.write_timestamp(
                 pso::PipelineStage::COMPUTE_SHADER,
                 query::Query {
                     pool: &query_pool,
                     id: 0,
                 },
             );
-            command_buffer.dispatch([num_dispatch_groups, 1, 1]);
-            command_buffer.write_timestamp(
+            cmd_buf.dispatch([num_dispatch_groups as u32, 1, 1]);
+            cmd_buf.write_timestamp(
                 pso::PipelineStage::COMPUTE_SHADER,
                 query::Query {
                     pool: &query_pool,
                     id: 1,
                 },
             );
-            command_buffer.pipeline_barrier(
+            cmd_buf.pipeline_barrier(
                 pso::PipelineStage::COMPUTE_SHADER..pso::PipelineStage::TRANSFER,
                 memory::Dependencies::empty(),
                 Some(memory::Barrier::Buffer {
                     states: buffer::Access::SHADER_READ | buffer::Access::SHADER_WRITE
                         ..buffer::Access::TRANSFER_READ,
                     families: None,
-                    target: &device_buffer,
+                    target: &device_buf,
                     range: None..None,
                 }),
             );
-            command_buffer.copy_buffer(
-                &device_buffer,
-                &staging_buffer,
+            cmd_buf.copy_buffer(
+                &device_buf,
+                &staging_buf,
                 &[command::BufferCopy {
                     src: 0,
                     dst: 0,
                     size: stride * bms.len() as u64,
                 }],
             );
-            command_buffer.finish();
+            cmd_buf.finish();
 
-            queue_group.queues[0].submit_without_semaphores(Some(&command_buffer), Some(&fence));
+            queue_group.queues[0].submit_without_semaphores(Some(&cmd_buf), Some(&fence));
 
             device.wait_for_fence(&fence, !0).unwrap();
-            command_pool.free(Some(command_buffer));
+            cmd_pool.free(Some(cmd_buf));
         }
 
         let (result, ts) = unsafe {
-            let mapping = device.map_memory(&staging_memory, 0..staging_size).unwrap();
+            let mapping = device.map_memory(&staging_mem, 0..staging_size).unwrap();
             let r = Vec::<u32>::from(slice::from_raw_parts::<u32>(
                 mapping as *const u8 as *const u32,
                 32 * bms.len(),
             ));
-            device.uinmap_memory(&staging_memory);
+            device.unmap_memory(&staging_mem);
 
             let mut t = vec![0u32; 2];
             // what is the purpose of this wait?
             device.wait_idle().unwrap();
             let raw_t = slice::from_raw_parts_mut(t.as_mut_ptr() as *mut u8, 4 * 2);
             device
-                .get_query_pool_results(
-                    query_pool.as_ref().unwrap(),
-                    0 .. 2,
-                    raw_t,
-                    4,
-                    query::ResultFlags::WAIT,
-                )
+                .get_query_pool_results(&query_pool, 0..2, raw_t, 4, query::ResultFlags::WAIT)
                 .unwrap();
 
             (r, t)
         };
 
-        assert_eq!(flat_u32_bms.len(), result.len());
-        let mut result_bms: Vec<BitMatrix> = vec![];
-        assert!((0..task.num_bms)
+        assert_eq!(flat_raw_bms.len(), result.len());
+        let mut result_bms: Vec<BitMatrix> = (0..task.num_bms)
+            .map(|i| {
+                BitMatrix::from_u32s(&result[i * 32..(i + 1) * 32])
+                    .expect("could not construct BitMatrix from u32 slice")
+            })
+            .collect();
+        println!("{}", &bms[0]);
+        println!("{}", &result_bms[0]);
+        assert!(bms
             .iter()
-            .map(|i| BitMatrix::from_u32s(&result[(i * 32)..(i + 1) * 32])
-                .unwrap()
-                .identical_to(bms[i].transpose()))
-            .all());
+            .zip(result_bms.iter())
+            .all(|(bm, rbm)| bm.transpose().identical_to(rbm)));
         println!("GPU results verified!");
         task.dispatch_times.push((ts[1] - ts[0]) as f64);
     }
 
     unsafe {
-        device.destroy_command_pool(command_pool);
+        device.destroy_command_pool(cmd_pool);
         device.destroy_descriptor_pool(desc_pool);
         device.destroy_descriptor_set_layout(set_layout);
-        device.destroy_shader_module(shader);
-        device.destroy_buffer(device_buffer);
-        device.destroy_buffer(staging_buffer);
+        device.destroy_shader_module(kmod);
+        device.destroy_buffer(device_buf);
+        device.destroy_buffer(staging_buf);
         device.destroy_fence(fence);
         device.destroy_pipeline_layout(pipeline_layout);
-        device.free_memory(device_memory);
-        device.free_memory(staging_memory);
+        device.free_memory(device_mem);
+        device.free_memory(staging_mem);
         device.destroy_compute_pipeline(pipeline);
     }
 }

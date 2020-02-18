@@ -9,15 +9,20 @@ edition = "2018"
 [features]
 default = ["gfx-backend-dx12", "gfx-backend-vulkan"]
 dx12 = ["gfx-backend-dx12"]
-vulkan = ["gfx-backend-vulkan"]
+vk = ["gfx-backend-vulkan"]
 
 [dependencies]
 log = "0.4"
 gfx-hal = "0.4.1"
-gfx-backend-vulkan = { version = "0.4.2", optional=true }
-gfx-backend-dx12 = { "0.4.2" = "0.4.2", optional=true }
 glsl-to-spirv = "0.1.4"
 rand = "0.7.3"
-
-[target.'cfg(debug_assertions)'.dependencies]
 env_logger = "0.6"
+
+[dependencies.gfx-backend-dx12]
+version = "0.4.2"
+optional = true
+
+[dependencies.gfx-backend-vulkan]
+version = "0.4.2"
+optional = true
+features = ["x11"]

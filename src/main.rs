@@ -1,11 +1,7 @@
-mod gpu;
 mod bitmats;
+mod gpu;
 
-extern crate gfx_backend_dx12 as dx12_back;
-extern crate gfx_backend_vulkan as vk_back;
-
-use std::path::{Path, PathBuf};
-use gpu::{run_timing_tests, Task, KernelType, BackendVariant};
+use gpu::{run_timing_tests, BackendVariant, KernelType, Task};
 
 fn main() {
     let mut t0: gpu::Task = Task {

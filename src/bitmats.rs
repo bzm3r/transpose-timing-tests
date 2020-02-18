@@ -1,5 +1,8 @@
 extern crate rand;
+
 use rand::prelude::*;
+use std::fmt;
+use std::fmt::Write;
 
 pub struct BitMatrix([[bool; 32]; 32]);
 
@@ -38,9 +41,9 @@ impl BitMatrix {
     fn row_to_u32(&self, i: usize) -> u32 {
         let row = self.0[i];
         let mut r: u32 = 0;
-        for j in 0u32..32u32 {
+        for j in 0..32 {
             if row[j] {
-                r = (1u32 << j) | r;
+                r = (1 << j as u32) | r;
             }
         }
         r
@@ -58,7 +61,7 @@ impl BitMatrix {
         if input.len() != 32 {
             Err(())
         } else {
-            let mut bm= [[false; u32]; 32];
+            let mut bm = [[false; 32]; 32];
             for i in 0..32 {
                 let row = input[i];
                 for j in 0..32 {
@@ -67,5 +70,21 @@ impl BitMatrix {
             }
             Ok(BitMatrix(bm))
         }
+    }
+}
+
+impl fmt::Display for BitMatrix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut string_repr = String::new();
+        for (i, u) in self.as_u32s().iter().enumerate() {
+            if (i == 0) {
+                write!(string_repr, "[{}, ", u).unwrap();
+            } else if (i == 31) {
+                write!(string_repr, "{}]", u).unwrap();
+            } else {
+                write!(string_repr, "{}, ", u).unwrap();
+            }
+        }
+        write!(f, "{}", string_repr)
     }
 }
