@@ -5,30 +5,47 @@ extern crate gfx_backend_vulkan as vkback;
 
 extern crate gfx_hal as hal;
 
-use std::{fs, ptr, slice, str::FromStr, path::Path};
+use std::{fmt, fs, ptr, slice, str::FromStr, path::Path};
 use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso};
+use self::hal::pso::StencilOp::Keep;
 
-type InstanceName = String;
-
+#[derive(Clone)]
 pub enum Kernel {
-    Dx12(Path),
-    Vk(Path),
+    Threadgroup(Path),
+    Ballot(Path),
+    Shuffle(Path),
+}
+
+impl fmt::Display for Kernel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Kernel::Threadgroup(_) => {
+                write!(f, "threadgroup", self.x, self.y)
+            },
+            Kernel::Ballot(_) => {
+                write!(f, "ballot", self.x, self.y)
+            },
+            Kernel::Shuffle(_) => {
+                write!(f, "shuffle", self.x, self.y)
+            },
+        }
+    }
 }
 
 pub enum TestVariant {
-    Dx12(InstanceName, Kernel),
-    Vk(InstanceName, Kernel),
+    Vk(Kernel),
+    Dx12(Kernel)
 }
 
 pub struct DispatchTime(f64);
 
-pub fn get_timings(tv: TestVariant, bm: [u32; 32], num_execs: usize) -> Vec<DispatchTime> {
+pub fn get_timings(tv: TestVariant, bm: Vec<[u32; 32]>, num_execs: usize) -> Vec<DispatchTime> {
     match tv {
-        TestVariant::Dx12(inm, k) => {
-            run_tests::<dx12_back::Backend>(inm, k, input_bm, num_execs)
+        TestVariant::Dx12(k) => {
+            run_tests::<dx12_back::Backend>(format!("DX12-{}", k), k, input_bms, num_execs)
         }
-        TestVariant::Vk(inm, k) => {
-            run_tests::<vk::Backend>(inm, k, input_bm, num_execs)
+        TestVariant::Vk(k) => {
+            run_tests::<vk::Backend>(format!("Vk-{}", k), k, input_bms, num_execs)
         }
     }
 }
@@ -65,14 +82,11 @@ pub fn run_tests<B: hal::Backend>(instance_name: String, kernel: Kernel, input_b
     let device = &gpu.device;
     let queue_group = gpu.queue_groups.first_mut().unwrap();
 
-    let kernel_mod  = match test_kernel {
-        Kernel::Dx12(p) => {
-            create_SM6_shader_module::<B>(&device, p)
-        },
-        Kernel::Vk(p) => {
-            create_SPIRV_shader_module(&device, p)
-        }
-    };
+    let Kernel(path) = kernel;
+    let glsl = fs::read_to_string(path).unwrap();
+    let file = glsl_to_spirv::compile(&glsl, glsl_to_spirv::ShaderType::Compute).unwrap();
+    let spirv: Vec<u32> = pso::read_spirv(file).unwrap();
+    let kmod = unsafe { device.create_shader_module(&spirv) }.unwrap();
 
     let (pipeline_layout, pipeline, set_layout, mut desc_pool) = {
         let set_layout = unsafe {
@@ -98,7 +112,7 @@ pub fn run_tests<B: hal::Backend>(instance_name: String, kernel: Kernel, input_b
             .expect("Can't create pipeline layout");
         let entry_point = pso::EntryPoint {
             entry: "main",
-            module: &shader,
+            module: &kmod,
             specialization: pso::Specialization::default(),
         };
         let pipeline = unsafe {
