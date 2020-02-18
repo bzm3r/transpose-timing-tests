@@ -6,7 +6,7 @@ extern crate gfx_backend_vulkan as vkback;
 extern crate gfx_hal as hal;
 
 use crate::bitmats::BitMatrix;
-use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso};
+use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, query};
 use std::{
     fmt, fs,
     path::{Path, PathBuf},
@@ -14,6 +14,7 @@ use std::{
     str::FromStr,
 };
 
+#[derive(Clone)]
 pub enum KernelType {
     Threadgroup,
     Ballot,
@@ -23,24 +24,53 @@ pub enum KernelType {
 impl fmt::Display for KernelType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Kernel::Threadgroup(_) => write!(f, "threadgroup", self.x, self.y),
-            Kernel::Ballot => write!(f, "ballot", self.x, self.y),
-            Kernel::Shuffle => write!(f, "shuffle", self.x, self.y),
+            KernelType::Threadgroup => write!(f, "{}", "threadgroup"),
+            KernelType::Ballot => write!(f, "{}", "ballot"),
+            KernelType::Shuffle => write!(f, "{}", "shuffle"),
         }
     }
 }
 
+#[derive(Clone)]
 pub enum BackendVariant {
     Vk,
     Dx12,
 }
 
+impl fmt::Display for BackendVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BackendVariant::Vk => write!(f, "{}", "vk"),
+            BackendVariant::Dx12 => write!(f, "{}", "dx12")
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Task {
+    name: String,
     num_bms: usize,
     workgroup_size: [usize; 3],
     kernel_type: KernelType,
     backend: BackendVariant,
     dispatch_times: Vec<f64>,
+}
+
+impl Task {
+    pub fn avg_dispatch_time(&self) -> f64 {
+        self.dispatch_times.iter().sum()/(self.dispatch_times.len() as f64)
+    }
+}
+
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "name: {}\nnum_bms: {}\n workgroup size: ({}, {}, {})\n kernel type: {}, backend: {}, avg dispatch time: {} ms", self.name, self.num_bms, self.workgroup_size[0], self.workgroup_size[1], self.workgroup_size[1], self.kernel_type, self.backend, self.avg_dispatch_time());
+        match self {
+            Kernel::Threadgroup(_) => write!(f, "threadgroup", self.x, self.y),
+            Kernel::Ballot => write!(f, "ballot", self.x, self.y),
+            Kernel::Shuffle => write!(f, "shuffle", self.x, self.y),
+        }
+    }    
 }
 
 fn materialize_kernel(task: &Task) -> String {
@@ -67,31 +97,35 @@ fn materialize_kernel(task: &Task) -> String {
     kernel
 }
 
-pub fn run_timing_tests(mut task: Task, num_execs: usize) -> Task {
-    match &task.backend {
+pub fn run_timing_tests(task: &mut Task, num_execs: usize) {
+    match task.backend {
         BackendVariant::Vk => {
-            let instance_name = format!("Vk-{}", &task.kernel_type);
-            run_tests::<vk::Backend>(instance_name, &mut task, num_execs);
+            #[!cfg(feature = "dx12")]
+            panic!("vulkan backend is not enabled");
+
+            let instance_name = format!("Vk-{}", task.kernel_type);
+            execute_task::<vk::Backend>(instance_name, task, num_execs);
         }
-        BackendVariant::Dx12 => match &task.kernel_type {
+        BackendVariant::Dx12 => match task.kernel_type {
             KernelType::Threadgroup => {
-                let instance_name = format!("Vk-{}", &task.kernel_type);
-                run_tests::<vk::Backend>(instance_name, &mut task, num_execs);
+                #[!cfg(feature = "dx12")]
+                panic!("dx12 backend is not loaded");
+
+                let instance_name = format!("Vk-{}", task.kernel_type);
+                execute_task::<vk::Backend>(instance_name, task, num_execs);
             }
             _ => {
                 panic!("DX12 backend can only run threadgroup kernel");
             }
         },
     }
-
-    task
 }
 
-pub fn run_tests<B: hal::Backend>(
+fn execute_task<B: hal::Backend>(
     instance_name: String,
     task: &mut Task,
     num_execs: usize,
-) -> Vec<DispatchTime> {
+)  {
     #[cfg(debug_assertions)]
     env_logger::init();
 
@@ -243,6 +277,7 @@ pub fn run_tests<B: hal::Backend>(
     let mut command_pool =
         unsafe { device.create_command_pool(family.id(), pool::CommandPoolCreateFlags::empty()) }
             .expect("Can't create command pool");
+    let query_pool = unsafe { device.create_query_pool(query::Type::Timestamp, 2).unwrap() };
     let fence = device.create_fence(false).unwrap();
 
     assert_eq!(task.num_bms % task.workgroup_size[0], 0);
@@ -274,7 +309,21 @@ pub fn run_tests<B: hal::Backend>(
             );
             command_buffer.bind_compute_pipeline(&pipeline);
             command_buffer.bind_compute_descriptor_sets(&pipeline_layout, 0, &[desc_set], &[]);
+            command_buffer.write_timestamp(
+                pso::PipelineStage::COMPUTE_SHADER,
+                query::Query {
+                    pool: &query_pool,
+                    id: 0,
+                },
+            );
             command_buffer.dispatch([num_dispatch_groups, 1, 1]);
+            command_buffer.write_timestamp(
+                pso::PipelineStage::COMPUTE_SHADER,
+                query::Query {
+                    pool: &query_pool,
+                    id: 1,
+                },
+            );
             command_buffer.pipeline_barrier(
                 pso::PipelineStage::COMPUTE_SHADER..pso::PipelineStage::TRANSFER,
                 memory::Dependencies::empty(),
@@ -303,14 +352,29 @@ pub fn run_tests<B: hal::Backend>(
             command_pool.free(Some(command_buffer));
         }
 
-        let result = unsafe {
+        let (result, ts) = unsafe {
             let mapping = device.map_memory(&staging_memory, 0..staging_size).unwrap();
             let r = Vec::<u32>::from(slice::from_raw_parts::<u32>(
                 mapping as *const u8 as *const u32,
                 32 * bms.len(),
             ));
             device.uinmap_memory(&staging_memory);
-            r
+
+            let mut t = vec![0u32; 2];
+            // what is the purpose of this wait?
+            device.wait_idle().unwrap();
+            let raw_t = slice::from_raw_parts_mut(t.as_mut_ptr() as *mut u8, 4 * 2);
+            device
+                .get_query_pool_results(
+                    query_pool.as_ref().unwrap(),
+                    0 .. 2,
+                    raw_t,
+                    4,
+                    query::ResultFlags::WAIT,
+                )
+                .unwrap();
+
+            (r, t)
         };
 
         assert_eq!(flat_u32_bms.len(), result.len());
@@ -322,7 +386,7 @@ pub fn run_tests<B: hal::Backend>(
                 .identical_to(bms[i].transpose()))
             .all());
         println!("GPU results verified!");
-        task.dispatch_times.push(dispatch_time);
+        task.dispatch_times.push((ts[1] - ts[0]) as f64);
     }
 
     unsafe {
@@ -338,8 +402,6 @@ pub fn run_tests<B: hal::Backend>(
         device.free_memory(staging_memory);
         device.destroy_compute_pipeline(pipeline);
     }
-
-    vec![]
 }
 
 unsafe fn create_buffer<B: hal::Backend>(
