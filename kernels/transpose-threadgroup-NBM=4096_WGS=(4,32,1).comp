@@ -5,7 +5,6 @@
 layout(local_size_x = WORKGROUP_SIZE, local_size_y = 32) in;
 
 layout(set = 0, binding = 0) buffer BM {
-    uint num_bms;
     uint[32] bms[NUM_BIT_MATRICES];
 };
 
@@ -25,41 +24,47 @@ uint shuffle_round(uint dst_tid, uint a, uint b, uint m, uint s) {
 // There should be at least ceil(M/N) workgroups.
 shared uint[32] tg_bms[gl_WorkGroupSize.x];
 const uint shifts[5] = uint[5](16, 8, 4, 2, 1);
+const uint masks[5] = uint[5](0xffff, 0xff00ff, 0xf0f0f0f, 0x33333333, 0x55555555);
 
 void main() {
-//    // Recall that a workgroup's size is (N, 32, 1).
-//    // gl_LocalInvocationID ranges from (0, 0, 0) to (N - 1, 32 - 1, 0) (inclusive).
-//    uint local_bm_ix = gl_LocalInvocationID.x;
-//    uint dst_tix = gl_LocalInvocationID.y;
-//    // Is gl_GlobalInvocationID.x = gl_WorkGroupSize.x*gl_WorkGroupID.x + gl_LocalInvocationID.x?
-//    uint global_bm_ix = gl_GlobalInvocationID.x;
-//
-//    uint dst_dat = bms[global_bm_ix][dst_tix];
-//    tg_bms[local_bm_ix][dst_tix] = dst_dat;
-//    memoryBarrierShared();
-//    barrier();
-//
-//    uint s;
-//    uint src_tix;
-//    uint src_dat;
-//
-//    for (int i = 0; i < 5; i++) {
-//        s = shifts[i];
-//
-//        src_tix = dst_tix^s;
-//        src_dat = tg_bms[local_bm_ix][src_tix];
-//        memoryBarrierShared();
-//        barrier();
-//
-//        dst_dat = shuffle_round(dst_tix, dst_dat, src_dat, 0xffff, s);
-//
-//        // on the last iteration, we don't need to store the result back into threadgroup shared memory?
-//        if (i < 4) {
-//            tg_bms[local_bm_ix][dst_tix] = dst_dat;
-//            memoryBarrierShared();
-//            barrier();
-//        }
-//    }
-//
-//    bms[global_bm_ix][dst_tix] = dst_dat;
+    // Recall that a workgroup's size is (N, 32, 1).
+    // gl_LocalInvocationID ranges from (0, 0, 0) to (N - 1, 32 - 1, 0) (inclusive).
+    uint local_bm_ix = gl_LocalInvocationID.x;
+    uint dst_tix = gl_LocalInvocationID.y;
+    // Is gl_GlobalInvocationID.x = gl_WorkGroupSize.x*gl_WorkGroupID.x + gl_LocalInvocationID.x?
+    uint global_bm_ix = gl_GlobalInvocationID.x;
+
+    uint dst_dat = bms[global_bm_ix][dst_tix];
+    tg_bms[local_bm_ix][dst_tix] = dst_dat;
+    memoryBarrierShared();
+    barrier();
+
+    if (dst_tix != 0) {
+        dst_dat = 0;
+    }
+    uint s;
+    uint m;
+    uint src_tix;
+    uint src_dat;
+
+    for (int i = 0; i < 5; i++) {
+        s = shifts[i];
+        m = masks[i];
+
+        src_tix = dst_tix^s;
+        src_dat = tg_bms[local_bm_ix][src_tix];
+        memoryBarrierShared();
+        barrier();
+
+        dst_dat = shuffle_round(dst_tix, dst_dat, src_dat, m, s);
+
+        // on the last iteration, we don't need to store the result back into threadgroup shared memory?
+        if (i < 4) {
+            tg_bms[local_bm_ix][dst_tix] = dst_dat;
+            memoryBarrierShared();
+            barrier();
+        }
+    }
+
+    bms[global_bm_ix][dst_tix] = dst_dat;
 }

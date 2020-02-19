@@ -356,7 +356,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
                     .expect("could not construct BitMatrix from u32 slice")
             })
             .collect();
-        println!("{}", &bms[0]);
+        println!("{}", &bms[0].transpose());
         println!("{}", &result_bms[0]);
         assert!(bms
             .iter()
