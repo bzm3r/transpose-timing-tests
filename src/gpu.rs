@@ -1,95 +1,14 @@
-#[cfg(feature = "dx12")]
-extern crate gfx_backend_dx12 as dx12_back;
-#[cfg(feature = "vk")]
-extern crate gfx_backend_vulkan as vk_back;
-
 extern crate gfx_hal as hal;
 
 use crate::bitmats::BitMatrix;
 use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, query};
+
 #[cfg(debug_assertions)]
 use std::fs;
-use std::{fmt, ptr, slice};
+use std::{ptr, slice};
 
-#[derive(Clone)]
-pub enum KernelType {
-    Threadgroup,
-    Ballot,
-    Shuffle,
-}
+use crate::{Task, KernelType};
 
-impl fmt::Display for KernelType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            KernelType::Threadgroup => write!(f, "{}", "threadgroup"),
-            KernelType::Ballot => write!(f, "{}", "ballot"),
-            KernelType::Shuffle => write!(f, "{}", "shuffle"),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum BackendVariant {
-    Vk,
-    Dx12,
-}
-
-impl fmt::Display for BackendVariant {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BackendVariant::Vk => write!(f, "{}", "vk"),
-            BackendVariant::Dx12 => write!(f, "{}", "dx12"),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct Task {
-    pub name: String,
-    pub num_bms: u32,
-    pub workgroup_size: [u32; 3],
-    pub num_execs_gpu: u32,
-    pub num_execs_cpu: u32,
-    pub kernel_type: KernelType,
-    pub backend: BackendVariant,
-    pub instant_times: Vec<f64>,
-    pub timestamp_query_times: Vec<f64>,
-}
-
-impl Task {
-    pub fn timestamp_time_stats(&self) -> (usize, f64, f64) {
-        let avg_time = self.timestamp_query_times.iter().sum::<f64>()
-            / (self.timestamp_query_times.len() as f64);
-        let std_time = (self
-            .timestamp_query_times
-            .iter()
-            .map(|t| (t - avg_time).powf(2.0))
-            .sum::<f64>()
-            / (self.timestamp_query_times.len() as f64))
-            .powf(0.5);
-        (self.timestamp_query_times.len(), avg_time, std_time)
-    }
-
-    pub fn instant_time_stats(&self) -> (usize, f64, f64) {
-        let avg_time = self.instant_times.iter().sum::<f64>() / (self.instant_times.len() as f64);
-        let std_time = (self
-            .instant_times
-            .iter()
-            .map(|t| (t - avg_time).powf(2.0))
-            .sum::<f64>()
-            / (self.instant_times.len() as f64))
-            .powf(0.5);
-        (self.instant_times.len(), avg_time, std_time)
-    }
-}
-
-impl fmt::Display for Task {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (ts_N, ts_avg, ts_std) = self.timestamp_time_stats();
-        let (its_N, its_avg, its_std) = self.instant_time_stats();
-        write!(f, "name: {}\nnum_bms: {}\nworkgroup size: ({}, {}, {})\nkernel type: {}, backend: {}\ntimestamp stats (N = {}): {:.2} +/- {:.2} ms\ninstant stats (N = {}): {:.2} +/- {:.2} ms", self.name, self.num_bms, self.workgroup_size[0], self.workgroup_size[1], self.workgroup_size[1], self.kernel_type, self.backend, ts_N, ts_avg, ts_std, its_N, its_avg, its_std)
-    }
-}
 
 fn materialize_kernel(task: &Task) -> String {
     let tp = format!("kernels/transpose-{}-template.comp", task.kernel_type);
@@ -107,11 +26,8 @@ fn materialize_kernel(task: &Task) -> String {
     #[cfg(debug_assertions)]
     std::fs::write(
         format!(
-            "kernels/transpose-{}-WGS=({},{},{}).comp",
-            task.kernel_type,
-            task.workgroup_size[0],
-            task.workgroup_size[1],
-            task.workgroup_size[2]
+            "kernels/transpose-{}-WGS=({},{}).comp",
+            task.kernel_type, task.workgroup_size[0], task.workgroup_size[1],
         ),
         &kernel,
     )
@@ -120,38 +36,12 @@ fn materialize_kernel(task: &Task) -> String {
     kernel
 }
 
-pub fn run_timing_tests(task: &mut Task) {
-    match task.backend {
-        BackendVariant::Vk => {
-            #[cfg(not(feature = "vk"))]
-            panic!("vulkan backend is not enabled");
-
-            let instance_name = format!("vk-{}", task.kernel_type);
-            #[cfg(feature = "vk")]
-            execute_task::<vk_back::Backend>(instance_name, task);
-        }
-        BackendVariant::Dx12 => match task.kernel_type {
-            KernelType::Threadgroup => {
-                #[cfg(not(feature = "dx12"))]
-                panic!("dx12 backend is not loaded");
-
-                let instance_name = format!("dx12-{}", task.kernel_type);
-                #[cfg(feature = "dx12")]
-                execute_task::<dx12_back::Backend>(instance_name, task);
-            }
-            _ => {
-                panic!("DX12 backend can only run threadgroup kernel");
-            }
-        },
-    }
-}
-
 const NVIDIA_1060: &str = "NVIDIA GeForce GTX 1060";
 const INTEL_HD_630: &str = "Intel(R) HD Graphics 630";
 const INTEL_IVY_MOBILE: &str = "Intel(R) Ivybridge Mobile";
 const INTEL_IRIS_640: &str = "Intel(R) Iris(TM) Plus Graphics 640";
 const INTEL_HD_520: &str = "Intel(R) HD Graphics 520";
-
+const RADEON_RX570: &str = "Radeon RX 570 Series";
 fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
     match physical_device_name {
         NVIDIA_1060 => {
@@ -174,6 +64,10 @@ fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7751
             Ok(83.333e-6)
         }
+        RADEON_RX570 => {
+            // https://vulkan.gpuinfo.org/displayreport.php?id=7941
+            Ok(40.0e-6)
+        }
         _ => {
             let err_string = format!(
                 "timestamp_period data unavailable for {}. Please update!",
@@ -190,7 +84,7 @@ fn dx12_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> 
         "unable to determine timestamp period using gfx-rs for dx12 backend",
     ))
 }
-fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task) {
+pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     #[cfg(debug_assertions)]
     env_logger::init();
 
@@ -200,9 +94,6 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task) {
     for raw_bm in raw_bms.iter() {
         flat_raw_bms.extend_from_slice(&raw_bm[..]);
     }
-
-    let instance = B::Instance::create(&instance_name, 1)
-        .expect(&format!("Failed to create {} instance!", &instance_name));
 
     let adapter = instance
         .enumerate_adapters()
@@ -233,6 +124,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task) {
     #[cfg(feature = "dx12")]
     let ts_grain = dx12_get_timestamp_period(&adapter.info.name).unwrap() as f64;
 
+    task.device_name = adapter.info.name.clone();
     let queue_group = gpu.queue_groups.first_mut().unwrap();
 
     let glsl = materialize_kernel(task);
@@ -410,7 +302,9 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task) {
             queue_group.queues[0].submit_without_semaphores(Some(&cmd_buf), Some(&fence));
 
             device.wait_for_fence(&fence, !0).unwrap();
-            task.instant_times.push(start.elapsed().as_millis() as f64);
+            device.reset_fence(&fence).unwrap();
+            task.instant_times
+                .push(start.elapsed().as_micros() as f64 * 1e-3);
             cmd_pool.free(Some(cmd_buf));
         }
 
@@ -458,6 +352,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task) {
     }
 
     unsafe {
+        device.destroy_query_pool(query_pool);
         device.destroy_command_pool(cmd_pool);
         device.destroy_descriptor_pool(desc_pool);
         device.destroy_descriptor_set_layout(set_layout);
