@@ -245,6 +245,17 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
         )
     };
 
+    let desc_set = unsafe {
+        let ds = desc_pool.allocate_set(&set_layout).unwrap();
+        device.write_descriptor_sets(Some(pso::DescriptorSetWrite {
+            set: &ds,
+            binding: 0,
+            array_offset: 0,
+            descriptors: Some(pso::Descriptor::Buffer(&device_buf, None..None)),
+        }));
+        ds
+    };
+
     let mut cmd_pool =
         unsafe { device.create_command_pool(family.id(), pool::CommandPoolCreateFlags::empty()) }
             .expect("Can't create command pool");
@@ -255,13 +266,6 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
     let num_dispatch_groups = task.num_bms / task.workgroup_size[0];
     for _ in 0..num_execs {
         unsafe {
-            let desc_set = desc_pool.allocate_set(&set_layout).unwrap();
-            device.write_descriptor_sets(Some(pso::DescriptorSetWrite {
-                set: &desc_set,
-                binding: 0,
-                array_offset: 0,
-                descriptors: Some(pso::Descriptor::Buffer(&device_buf, None..None)),
-            }));
             let mut cmd_buf = cmd_pool.allocate_one(command::Level::Primary);
             cmd_buf.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
             cmd_buf.reset_query_pool(&query_pool, 0..2);
@@ -271,7 +275,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
                 &[command::BufferCopy {
                     src: 0,
                     dst: 0,
-                    size: flat_raw_bms.len() as u64,
+                    size: stride * flat_raw_bms.len() as u64,
                 }],
             );
             cmd_buf.pipeline_barrier(
@@ -286,7 +290,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
                 }),
             );
             cmd_buf.bind_compute_pipeline(&pipeline);
-            cmd_buf.bind_compute_descriptor_sets(&pipeline_layout, 0, &[desc_set], &[]);
+            cmd_buf.bind_compute_descriptor_sets(&pipeline_layout, 0, [&desc_set].iter().cloned(), &[]);
             cmd_buf.write_timestamp(
                 pso::PipelineStage::COMPUTE_SHADER,
                 query::Query {
@@ -319,7 +323,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
                 &[command::BufferCopy {
                     src: 0,
                     dst: 0,
-                    size: flat_raw_bms.len() as u64,
+                    size: stride * flat_raw_bms.len() as u64,
                 }],
             );
             cmd_buf.finish();
