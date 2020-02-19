@@ -271,7 +271,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
                 &[command::BufferCopy {
                     src: 0,
                     dst: 0,
-                    size: stride * flat_raw_bms.len() as u64,
+                    size: flat_raw_bms.len() as u64,
                 }],
             );
             cmd_buf.pipeline_barrier(
@@ -319,7 +319,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
                 &[command::BufferCopy {
                     src: 0,
                     dst: 0,
-                    size: stride * bms.len() as u64,
+                    size: flat_raw_bms.len() as u64,
                 }],
             );
             cmd_buf.finish();
@@ -330,11 +330,11 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
             cmd_pool.free(Some(cmd_buf));
         }
 
-        let (result, ts) = unsafe {
+        let (result, t) = unsafe {
             let mapping = device.map_memory(&staging_mem, 0..staging_size).unwrap();
             let r = Vec::<u32>::from(slice::from_raw_parts::<u32>(
                 mapping as *const u8 as *const u32,
-                32 * bms.len(),
+                flat_raw_bms.len(),
             ));
             device.unmap_memory(&staging_mem);
 
@@ -356,14 +356,17 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
                     .expect("could not construct BitMatrix from u32 slice")
             })
             .collect();
-        println!("{}", &bms[0].transpose());
-        println!("{}", &result_bms[0]);
-        assert!(bms
-            .iter()
-            .zip(result_bms.iter())
-            .all(|(bm, rbm)| bm.transpose().identical_to(rbm)));
+
+        for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
+            if !(bm.transpose().identical_to(rbm)) {
+                println!("input: {}", &bms[i]);
+                println!("expected: {}", &bms[i].transpose());
+                println!("got: {}", &result_bms[i]);
+                panic!("bm {} not transposed correctly", i);
+            }
+        }
         println!("GPU results verified!");
-        task.dispatch_times.push((ts[1] - ts[0]) as f64);
+        task.dispatch_times.push((t[1] - t[0]) as f64);
     }
 
     unsafe {

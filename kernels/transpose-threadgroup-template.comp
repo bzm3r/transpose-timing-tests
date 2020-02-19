@@ -39,9 +39,6 @@ void main() {
     memoryBarrierShared();
     barrier();
 
-    if (dst_tix != 0) {
-        dst_dat = 0;
-    }
     uint s;
     uint m;
     uint src_tix;
