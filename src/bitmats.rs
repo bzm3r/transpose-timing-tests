@@ -28,7 +28,10 @@ impl BitMatrix {
     }
 
     pub fn identical_to(&self, other: &BitMatrix) -> bool {
-        self.as_u32s().iter().zip(other.as_u32s().iter()).all(|(x, y)| x == y)
+        self.as_u32s()
+            .iter()
+            .zip(other.as_u32s().iter())
+            .all(|(x, y)| x == y)
     }
 
     fn row_to_u32(&self, i: usize) -> u32 {

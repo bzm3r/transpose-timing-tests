@@ -46,22 +46,48 @@ impl fmt::Display for BackendVariant {
 #[derive(Clone)]
 pub struct Task {
     pub name: String,
-    pub num_bms: usize,
-    pub workgroup_size: [usize; 3],
+    pub num_bms: u32,
+    pub workgroup_size: [u32; 3],
+    pub num_execs_gpu: u32,
+    pub num_execs_cpu: u32,
     pub kernel_type: KernelType,
     pub backend: BackendVariant,
-    pub dispatch_times: Vec<f64>,
+    pub instant_times: Vec<f64>,
+    pub timestamp_query_times: Vec<f64>,
 }
 
 impl Task {
-    pub fn avg_dispatch_time(&self) -> f64 {
-        self.dispatch_times.iter().sum::<f64>() / (self.dispatch_times.len() as f64)
+    pub fn timestamp_time_stats(&self) -> (usize, f64, f64) {
+        let avg_time = self.timestamp_query_times.iter().sum::<f64>()
+            / (self.timestamp_query_times.len() as f64);
+        let std_time = (self
+            .timestamp_query_times
+            .iter()
+            .map(|t| (t - avg_time).powf(2.0))
+            .sum::<f64>()
+            / (self.timestamp_query_times.len() as f64))
+            .powf(0.5);
+        (self.timestamp_query_times.len(), avg_time, std_time)
+    }
+
+    pub fn instant_time_stats(&self) -> (usize, f64, f64) {
+        let avg_time = self.instant_times.iter().sum::<f64>() / (self.instant_times.len() as f64);
+        let std_time = (self
+            .instant_times
+            .iter()
+            .map(|t| (t - avg_time).powf(2.0))
+            .sum::<f64>()
+            / (self.instant_times.len() as f64))
+            .powf(0.5);
+        (self.instant_times.len(), avg_time, std_time)
     }
 }
 
 impl fmt::Display for Task {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "name: {}\nnum_bms: {}\n workgroup size: ({}, {}, {})\n kernel type: {}, backend: {}, avg dispatch time: {} ms", self.name, self.num_bms, self.workgroup_size[0], self.workgroup_size[1], self.workgroup_size[1], self.kernel_type, self.backend, self.avg_dispatch_time())
+        let (ts_N, ts_avg, ts_std) = self.timestamp_time_stats();
+        let (its_N, its_avg, its_std) = self.instant_time_stats();
+        write!(f, "name: {}\nnum_bms: {}\nworkgroup size: ({}, {}, {})\nkernel type: {}, backend: {}\ntimestamp stats (N = {}): {:.2} +/- {:.2} ms\ninstant stats (N = {}): {:.2} +/- {:.2} ms", self.name, self.num_bms, self.workgroup_size[0], self.workgroup_size[1], self.workgroup_size[1], self.kernel_type, self.backend, ts_N, ts_avg, ts_std, its_N, its_avg, its_std)
     }
 }
 
@@ -72,8 +98,8 @@ fn materialize_kernel(task: &Task) -> String {
 
     match task.kernel_type {
         KernelType::Threadgroup => {
-            kernel = kernel.replace("~NUM_BMS~", &format!("{}", task.num_bms));
             kernel = kernel.replace("~WG_SIZE~", &format!("{}", task.workgroup_size[0]));
+            kernel = kernel.replace("~NUM_EXECS~", &format!("{}", task.num_execs_gpu));
         }
         _ => unimplemented!(),
     }
@@ -81,9 +107,8 @@ fn materialize_kernel(task: &Task) -> String {
     #[cfg(debug_assertions)]
     std::fs::write(
         format!(
-            "kernels/transpose-{}-NBM={}_WGS=({},{},{}).comp",
+            "kernels/transpose-{}-WGS=({},{},{}).comp",
             task.kernel_type,
-            task.num_bms,
             task.workgroup_size[0],
             task.workgroup_size[1],
             task.workgroup_size[2]
@@ -95,7 +120,7 @@ fn materialize_kernel(task: &Task) -> String {
     kernel
 }
 
-pub fn run_timing_tests(task: &mut Task, num_execs: usize) {
+pub fn run_timing_tests(task: &mut Task) {
     match task.backend {
         BackendVariant::Vk => {
             #[cfg(not(feature = "vk"))]
@@ -103,7 +128,7 @@ pub fn run_timing_tests(task: &mut Task, num_execs: usize) {
 
             let instance_name = format!("vk-{}", task.kernel_type);
             #[cfg(feature = "vk")]
-            execute_task::<vk_back::Backend>(instance_name, task, num_execs);
+            execute_task::<vk_back::Backend>(instance_name, task);
         }
         BackendVariant::Dx12 => match task.kernel_type {
             KernelType::Threadgroup => {
@@ -112,7 +137,7 @@ pub fn run_timing_tests(task: &mut Task, num_execs: usize) {
 
                 let instance_name = format!("dx12-{}", task.kernel_type);
                 #[cfg(feature = "dx12")]
-                execute_task::<dx12_back::Backend>(instance_name, task, num_execs);
+                execute_task::<dx12_back::Backend>(instance_name, task);
             }
             _ => {
                 panic!("DX12 backend can only run threadgroup kernel");
@@ -121,12 +146,55 @@ pub fn run_timing_tests(task: &mut Task, num_execs: usize) {
     }
 }
 
-fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_execs: usize) {
+const NVIDIA_1060: &str = "NVIDIA GeForce GTX 1060";
+const INTEL_HD_630: &str = "Intel(R) HD Graphics 630";
+const INTEL_IVY_MOBILE: &str = "Intel(R) Ivybridge Mobile";
+const INTEL_IRIS_640: &str = "Intel(R) Iris(TM) Plus Graphics 640";
+const INTEL_HD_520: &str = "Intel(R) HD Graphics 520";
+
+fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
+    match physical_device_name {
+        NVIDIA_1060 => {
+            // https://vulkan.gpuinfo.org/displayreport.php?id=7922
+            Ok(1.0e-6)
+        }
+        INTEL_HD_630 => {
+            // https://vulkan.gpuinfo.org/displayreport.php?id=7797
+            Ok(83.333e-6)
+        }
+        INTEL_IVY_MOBILE => {
+            // https://vulkan.gpuinfo.org/displayreport.php?id=7929
+            Ok(80.0e-6)
+        }
+        INTEL_IRIS_640 => {
+            // https://vulkan.gpuinfo.org/displayreport.php?id=7855
+            Ok(83.333e-6)
+        }
+        INTEL_HD_520 => {
+            // https://vulkan.gpuinfo.org/displayreport.php?id=7751
+            Ok(83.333e-6)
+        }
+        _ => {
+            let err_string = format!(
+                "timestamp_period data unavailable for {}. Please update!",
+                physical_device_name
+            );
+            println!("{}", &err_string);
+            Err(err_string)
+        }
+    }
+}
+
+fn dx12_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
+    Err(String::from(
+        "unable to determine timestamp period using gfx-rs for dx12 backend",
+    ))
+}
+fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task) {
     #[cfg(debug_assertions)]
     env_logger::init();
 
-    let bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_random()).collect();
-    let tbms: Vec<BitMatrix> = bms.iter().map(|bm| bm.transpose()).collect();
+    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_random()).collect();
     let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
     let mut flat_raw_bms: Vec<u32> = Vec::new();
     for raw_bm in raw_bms.iter() {
@@ -160,6 +228,11 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
             .unwrap()
     };
     let device = &gpu.device;
+    #[cfg(feature = "vk")]
+    let ts_grain = vk_get_timestamp_period(&adapter.info.name).unwrap() as f64;
+    #[cfg(feature = "dx12")]
+    let ts_grain = dx12_get_timestamp_period(&adapter.info.name).unwrap() as f64;
+
     let queue_group = gpu.queue_groups.first_mut().unwrap();
 
     let glsl = materialize_kernel(task);
@@ -264,7 +337,7 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
 
     assert_eq!(task.num_bms % task.workgroup_size[0], 0);
     let num_dispatch_groups = task.num_bms / task.workgroup_size[0];
-    for _ in 0..num_execs {
+    for i in 0..task.num_execs_cpu {
         unsafe {
             let mut cmd_buf = cmd_pool.allocate_one(command::Level::Primary);
             cmd_buf.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
@@ -290,7 +363,12 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
                 }),
             );
             cmd_buf.bind_compute_pipeline(&pipeline);
-            cmd_buf.bind_compute_descriptor_sets(&pipeline_layout, 0, [&desc_set].iter().cloned(), &[]);
+            cmd_buf.bind_compute_descriptor_sets(
+                &pipeline_layout,
+                0,
+                [&desc_set].iter().cloned(),
+                &[],
+            );
             cmd_buf.write_timestamp(
                 pso::PipelineStage::COMPUTE_SHADER,
                 query::Query {
@@ -328,49 +406,55 @@ fn execute_task<B: hal::Backend>(instance_name: String, task: &mut Task, num_exe
             );
             cmd_buf.finish();
 
+            let start = std::time::Instant::now();
             queue_group.queues[0].submit_without_semaphores(Some(&cmd_buf), Some(&fence));
 
             device.wait_for_fence(&fence, !0).unwrap();
+            task.instant_times.push(start.elapsed().as_millis() as f64);
             cmd_pool.free(Some(cmd_buf));
         }
 
-        let (result, t) = unsafe {
-            let mapping = device.map_memory(&staging_mem, 0..staging_size).unwrap();
-            let r = Vec::<u32>::from(slice::from_raw_parts::<u32>(
-                mapping as *const u8 as *const u32,
-                flat_raw_bms.len(),
-            ));
-            device.unmap_memory(&staging_mem);
+        if i == 0 {
+            let result = unsafe {
+                let mapping = device.map_memory(&staging_mem, 0..staging_size).unwrap();
+                let r = Vec::<u32>::from(slice::from_raw_parts::<u32>(
+                    mapping as *const u8 as *const u32,
+                    flat_raw_bms.len(),
+                ));
+                device.unmap_memory(&staging_mem);
+                r
+            };
 
-            let mut t = vec![0u32; 2];
-            // what is the purpose of this wait?
-            device.wait_idle().unwrap();
-            let raw_t = slice::from_raw_parts_mut(t.as_mut_ptr() as *mut u8, 4 * 2);
+            assert_eq!(flat_raw_bms.len(), result.len());
+            let mut result_bms: Vec<BitMatrix> = (0..(task.num_bms as usize))
+                .map(|i| {
+                    BitMatrix::from_u32s(&result[i * 32..(i + 1) * 32])
+                        .expect("could not construct BitMatrix from u32 slice")
+                })
+                .collect();
+
+            for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
+                if !(bm.transpose().identical_to(rbm)) {
+                    println!("input: {}", &bms[i]);
+                    println!("expected: {}", &bms[i].transpose());
+                    println!("got: {}", &result_bms[i]);
+                    panic!("bm {} not transposed correctly", i);
+                }
+            }
+            bms = result_bms;
+            println!("GPU results verified!");
+        }
+
+        let ts = unsafe {
+            let mut ts = vec![0u32; 2];
+            let raw_t = slice::from_raw_parts_mut(ts.as_mut_ptr() as *mut u8, 4 * 2);
             device
                 .get_query_pool_results(&query_pool, 0..2, raw_t, 4, query::ResultFlags::WAIT)
                 .unwrap();
-
-            (r, t)
+            ts
         };
-
-        assert_eq!(flat_raw_bms.len(), result.len());
-        let mut result_bms: Vec<BitMatrix> = (0..task.num_bms)
-            .map(|i| {
-                BitMatrix::from_u32s(&result[i * 32..(i + 1) * 32])
-                    .expect("could not construct BitMatrix from u32 slice")
-            })
-            .collect();
-
-        for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
-            if !(bm.transpose().identical_to(rbm)) {
-                println!("input: {}", &bms[i]);
-                println!("expected: {}", &bms[i].transpose());
-                println!("got: {}", &result_bms[i]);
-                panic!("bm {} not transposed correctly", i);
-            }
-        }
-        println!("GPU results verified!");
-        task.dispatch_times.push((t[1] - t[0]) as f64);
+        task.timestamp_query_times
+            .push((ts[1].wrapping_sub(ts[0])) as f64 * ts_grain);
     }
 
     unsafe {
