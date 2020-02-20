@@ -2,10 +2,10 @@ mod bitmats;
 mod gpu;
 
 #[cfg(feature = "vk")]
-extern crate gfx_backend_vulkan as vk_back;
+extern crate gfx_backend_vulkan as Vulkan;
 
 #[cfg(feature = "dx12")]
-extern crate gfx_backend_dx12 as dx12_back;
+extern crate gfx_backend_dx12 as Dx12;
 
 extern crate gfx_hal as hal;
 use hal::Instance;
@@ -33,15 +33,21 @@ impl fmt::Display for KernelType {
 
 #[derive(Clone)]
 pub enum BackendVariant {
+    #[cfg(feature = "vk")]
     Vk,
+    #[cfg(feature = "dx12")]
     Dx12,
+    Empty,
 }
 
 impl fmt::Display for BackendVariant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "vk")]
             BackendVariant::Vk => write!(f, "{}", "vk"),
+            #[cfg(feature = "dx12")]
             BackendVariant::Dx12 => write!(f, "{}", "dx12"),
+            _ => write!(f, "{}", "empty"),
         }
     }
 }
@@ -122,18 +128,22 @@ impl fmt::Display for Task {
         write!(f, "{}", s)
     }
 }
+//
+// pub enum CreatedInstance {
+//     #[cfg(feature = "vk")]
+//     Vulkan(Vulkan::Instance),
+//     #[cfg(feature = "dx12")]
+//     Dx12(Dx12::Instance),
+// }
 
 fn main() {
-    let vk_instance: Option<hal::Backend::Instance> = None;
-    let dx12_instance: Option<hal::Backend::Instance> = None;
-
     #[cfg(feature = "vk")]
-    let vk_instance = Some(vk_back::Instance::create("vk-back", 1)
-        .expect(&format!("Failed to create Vulkan instance!")));
+    let vk_instance = Vulkan::Instance::create("vk-back", 1)
+        .expect(&format!("could not create Vulkan instance"));
 
     #[cfg(feature = "dx12")]
-    let dx12_instance = Some(dx12_back::Instance::create("dx12-back", 1)
-        .expect(&format!("Failed to create DX12 instance!")));
+    let dx12_instance = Dx12::Instance::create("dx12-back", 1)
+        .expect(&format!("could not create DX12 instance"));
 
     let mut tasks = Vec::<Task>::new();
     tasks.push(Task {
@@ -153,20 +163,24 @@ fn main() {
 
     for task in tasks.iter_mut() {
         match task.backend {
+            #[cfg(feature = "vk")]
             BackendVariant::Vk => {
-                #[cfg(feature = "vk")]
-                time_task::<vk_back::Backend>(vk_instance.as_ref().expect("no Vulkan instance created"), task);
+                time_task::<Vulkan::Backend>(&vk_instance, task);
             },
+            #[cfg(feature = "dx12")]
             BackendVariant::Dx12 => {
                 match task.kernel_type {
                     KernelType::Threadgroup => {
                         #[cfg(feature = "dx12")]
-                        time_task::<dx12_back::Backend>(dx12_instance.as_ref().expect("no DX12 instance created"), task);
+                        time_task::<Dx12::Backend>(&dx12_instance, task);
                     },
                     _ => {
                         panic!("DX12 backend can only execute handle threadgroup kernel variant at the moment")
                     }
                 }
+            },
+            _ => {
+                println!("Empty backend specified for task. Doing nothing.")
             }
         }
         println!("{}", task);

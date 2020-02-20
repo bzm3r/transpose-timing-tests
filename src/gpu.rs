@@ -2,9 +2,6 @@ extern crate gfx_hal as hal;
 
 use crate::bitmats::BitMatrix;
 use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, query};
-
-#[cfg(debug_assertions)]
-use std::fs;
 use std::{ptr, slice};
 
 use crate::{Task, KernelType};
@@ -79,7 +76,8 @@ fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
     }
 }
 
-fn dx12_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
+#[allow(dead_code)]
+fn dx12_get_timestamp_period(_physical_device_name: &str) -> Result<f32, String> {
     Err(String::from(
         "unable to determine timestamp period using gfx-rs for dx12 backend",
     ))
@@ -320,7 +318,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             };
 
             assert_eq!(flat_raw_bms.len(), result.len());
-            let mut result_bms: Vec<BitMatrix> = (0..(task.num_bms as usize))
+            let result_bms: Vec<BitMatrix> = (0..(task.num_bms as usize))
                 .map(|i| {
                     BitMatrix::from_u32s(&result[i * 32..(i + 1) * 32])
                         .expect("could not construct BitMatrix from u32 slice")
