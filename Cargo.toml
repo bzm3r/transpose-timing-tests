@@ -13,16 +13,18 @@ vk = ["gfx-backend-vulkan"]
 
 [dependencies]
 log = "0.4"
-gfx-hal = "0.4.1"
+gfx-hal = { git = "https://github.com/bzm3r/gfx.git", rev = "4921b4e1"}
 shaderc = "0.6.1"
 rand = "0.7.3"
 env_logger = "0.6"
 
 [dependencies.gfx-backend-dx12]
-version = "0.4.2"
+git = "https://github.com/bzm3r/gfx.git"
+rev = "4921b4e1"
 optional = true
 
 [dependencies.gfx-backend-vulkan]
-version = "0.4.2"
+git = "https://github.com/bzm3r/gfx.git"
+rev = "4921b4e1"
 optional = true
 features = ["x11"]
