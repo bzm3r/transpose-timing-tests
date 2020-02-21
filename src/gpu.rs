@@ -95,11 +95,11 @@ fn compile_kernel(task: &mut Task) -> std::fs::File {
     let kernel_fp = format!("kernels/{}.spv", &kernel_name);
     match OpenOptions::new().read(true).open(&kernel_fp) {
         Ok(f) => {
-            println!("kernel already compiled...");
+            println!("{} kernel already compiled...", &kernel_name);
             f
         },
         Err(_) => {
-            println!("compiling kernel...");
+            println!("compiling kernel {}...", &kernel_name);
             let mut compiler = shaderc::Compiler::new().unwrap();
             let mut options = shaderc::CompileOptions::new().unwrap();
             options.set_target_env(
