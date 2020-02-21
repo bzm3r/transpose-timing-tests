@@ -1,13 +1,16 @@
 extern crate gfx_hal as hal;
+extern crate shaderc;
 
 use crate::bitmats::BitMatrix;
 use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, query};
 use std::{ptr, slice};
 
-use crate::{Task, KernelType};
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 
+use crate::{KernelType, Task};
 
-fn materialize_kernel(task: &Task) -> String {
+fn materialize_kernel(task: &Task) -> (String, String) {
     let tp = format!("kernels/transpose-{}-template.comp", task.kernel_type);
     let mut kernel =
         std::fs::read_to_string(&tp).expect(&format!("could not kernel template at path: {}", &tp));
@@ -17,31 +20,35 @@ fn materialize_kernel(task: &Task) -> String {
             kernel = kernel.replace("~WG_SIZE~", &format!("{}", task.workgroup_size[0]));
             kernel = kernel.replace("~NUM_EXECS~", &format!("{}", task.num_execs_gpu));
         }
-        _ => unimplemented!(),
+        _ => {
+            if task.workgroup_size[1] > 1 {
+                panic!("does not make sense to have Y-dimension in workgroup size for subgroup kernels");
+            }
+            kernel = kernel.replace("~WG_SIZE~", &format!("{}", task.workgroup_size[0]));
+            kernel = kernel.replace("~NUM_EXECS~", &format!("{}", task.num_execs_gpu));
+        }
     }
 
+    let kernel_name = format!(
+        "transpose-{}-WGS=({},{})",
+        task.kernel_type, task.workgroup_size[0], task.workgroup_size[1]
+    );
     #[cfg(debug_assertions)]
-    std::fs::write(
-        format!(
-            "kernels/transpose-{}-WGS=({},{}).comp",
-            task.kernel_type, task.workgroup_size[0], task.workgroup_size[1],
-        ),
-        &kernel,
-    )
-    .unwrap();
+    std::fs::write(format!("kernels/{}.comp", &kernel_name,), &kernel).unwrap();
 
-    kernel
+    (kernel, kernel_name)
 }
 
-const NVIDIA_1060: &str = "NVIDIA GeForce GTX 1060";
+const NVIDIA_GTX_1060: &str = "GeForce GTX 1060";
 const INTEL_HD_630: &str = "Intel(R) HD Graphics 630";
-const INTEL_IVY_MOBILE: &str = "Intel(R) Ivybridge Mobile";
-const INTEL_IRIS_640: &str = "Intel(R) Iris(TM) Plus Graphics 640";
+const INTEL_IVYBRIDGE_MOBILE: &str = "Intel(R) Ivybridge Mobile";
+const INTEL_IRIS_PLUS_640: &str = "Intel(R) Iris(TM) Plus Graphics 640";
 const INTEL_HD_520: &str = "Intel(R) HD Graphics 520";
-const RADEON_RX570: &str = "Radeon RX 570 Series";
+const AMD_RADEON_RX570: &str = "Radeon RX 570 Series";
+
 fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
     match physical_device_name {
-        NVIDIA_1060 => {
+        NVIDIA_GTX_1060 => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7922
             Ok(1.0e-6)
         }
@@ -49,11 +56,11 @@ fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7797
             Ok(83.333e-6)
         }
-        INTEL_IVY_MOBILE => {
+        INTEL_IVYBRIDGE_MOBILE => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7929
             Ok(80.0e-6)
         }
-        INTEL_IRIS_640 => {
+        INTEL_IRIS_PLUS_640 => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7855
             Ok(83.333e-6)
         }
@@ -61,7 +68,7 @@ fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7751
             Ok(83.333e-6)
         }
-        RADEON_RX570 => {
+        AMD_RADEON_RX570 => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7941
             Ok(40.0e-6)
         }
@@ -125,9 +132,30 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     task.device_name = adapter.info.name.clone();
     let queue_group = gpu.queue_groups.first_mut().unwrap();
 
-    let glsl = materialize_kernel(task);
-    let file = glsl_to_spirv::compile(&glsl, glsl_to_spirv::ShaderType::Compute).unwrap();
-    let spirv: Vec<u32> = pso::read_spirv(file).unwrap();
+    let (glsl, kernel_name) = materialize_kernel(task);
+    let mut compiler = shaderc::Compiler::new().unwrap();
+    let mut options = shaderc::CompileOptions::new().unwrap();
+    options.set_target_env(
+        shaderc::TargetEnv::Vulkan,
+        ((1 as u32) << 22) | ((1 as u32) << 12),
+    );
+    let artifact = compiler
+        .compile_into_spirv(
+            &glsl,
+            shaderc::ShaderKind::Compute,
+            &format!("{}.glsl", kernel_name),
+            "main",
+            Some(&options),
+        )
+        .unwrap();
+    let mut compiled_kernel = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(format!("kernels/{}.spv", &kernel_name))
+        .unwrap();
+    compiled_kernel.write_all(artifact.as_binary_u8()).unwrap();
+    let spirv: Vec<u32> = pso::read_spirv(&compiled_kernel).unwrap();
     let kmod = unsafe { device.create_shader_module(&spirv) }.unwrap();
 
     let (pipeline_layout, pipeline, set_layout, mut desc_pool) = {
@@ -139,7 +167,14 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
                     count: 1,
                     stage_flags: pso::ShaderStageFlags::COMPUTE,
                     immutable_samplers: false,
-                }],
+                }, pso::DescriptorSetLayoutBinding {
+                    binding: 1,
+                    ty: pso::DescriptorType::UniformBuffer,
+                    count: 1,
+                    stage_flags: pso::ShaderStageFlags::COMPUTE,
+                    immutable_samplers: false,
+                },
+                ],
                 &[],
             )
         }
@@ -162,16 +197,32 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
 
         let desc_pool = unsafe {
             device.create_descriptor_pool(
-                1,
+                2,
                 &[pso::DescriptorRangeDesc {
                     ty: pso::DescriptorType::StorageBuffer,
                     count: 1,
-                }],
+                },
+                    pso::DescriptorRangeDesc {
+                        ty: pso::DescriptorType::UniformBuffer,
+                        count: 1,
+                    }],
                 pso::DescriptorPoolCreateFlags::empty(),
             )
         }
         .expect("Can't create descriptor pool");
         (pipeline_layout, pipeline, set_layout, desc_pool)
+    };
+
+    let stride = std::mem::size_of::<u32>() as u64;
+    let (uniform_mem, uniform_buf, uniform_size) = unsafe {
+        create_buffer::<B>(
+            &device,
+            &memory_properties.memory_types,
+            memory::Properties::empty(),
+            buffer::Usage::UNIFORM,
+            stride,
+            1,
+        )
     };
 
     let stride = std::mem::size_of::<u32>() as u64;
@@ -195,6 +246,15 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             flat_raw_bms.len() * stride as usize,
         );
         device.unmap_memory(&staging_mem);
+
+        let mapping = device.map_memory(&uniform_mem, 0..uniform_size).unwrap();
+
+        ptr::copy_nonoverlapping(
+            task.num_execs_gpu as *const u8,
+            mapping,
+            1 * stride as usize,
+        );
+        device.unmap_memory(&uniform_mem);
     }
 
     let (device_mem, device_buf, _device_buffer_size) = unsafe {
@@ -215,6 +275,12 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             binding: 0,
             array_offset: 0,
             descriptors: Some(pso::Descriptor::Buffer(&device_buf, None..None)),
+        }));
+        device.write_descriptor_sets(Some(pso::DescriptorSetWrite {
+            set: &ds,
+            binding: 1,
+            array_offset: 0,
+            descriptors: Some(pso::Descriptor::Buffer(&uniform_buf, None..None)),
         }));
         ds
     };

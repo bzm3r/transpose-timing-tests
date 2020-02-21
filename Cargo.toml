@@ -14,7 +14,7 @@ vk = ["gfx-backend-vulkan"]
 [dependencies]
 log = "0.4"
 gfx-hal = "0.4.1"
-glsl-to-spirv = "0.1.4"
+shaderc = "0.6.1"
 rand = "0.7.3"
 env_logger = "0.6"
 

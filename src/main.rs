@@ -106,46 +106,53 @@ impl fmt::Display for Task {
             self.num_bms,
             self.workgroup_size[0] * self.workgroup_size[1]
         )
-            .unwrap();
+        .unwrap();
         write!(
             s,
             "CPU loops: {}, GPU loops: {}\n",
             self.num_execs_cpu, self.num_execs_gpu
         )
-            .unwrap();
+        .unwrap();
         write!(
             s,
             "timestamp stats (N = {}): {:.2} +/- {:.2} ms\n",
             ts_n, ts_avg, ts_std
         )
-            .unwrap();
+        .unwrap();
         write!(
             s,
             "instant stats (N = {}): {:.2} +/- {:.2} ms",
             its_n, its_avg, its_std
         )
-            .unwrap();
+        .unwrap();
         write!(f, "{}", s)
     }
 }
-//
-// pub enum CreatedInstance {
-//     #[cfg(feature = "vk")]
-//     Vulkan(Vulkan::Instance),
-//     #[cfg(feature = "dx12")]
-//     Dx12(Dx12::Instance),
-// }
 
 fn main() {
     #[cfg(feature = "vk")]
-    let vk_instance = Vulkan::Instance::create("vk-back", 1)
-        .expect(&format!("could not create Vulkan instance"));
+    let vk_instance =
+        Vulkan::Instance::create("vk-back", 1).expect(&format!("could not create Vulkan instance"));
 
     #[cfg(feature = "dx12")]
-    let dx12_instance = Dx12::Instance::create("dx12-back", 1)
-        .expect(&format!("could not create DX12 instance"));
+    let dx12_instance =
+        Dx12::Instance::create("dx12-back", 1).expect(&format!("could not create DX12 instance"));
 
     let mut tasks = Vec::<Task>::new();
+    // tasks.push(Task {
+    //     name: String::from("Vk-Shuffle-0"),
+    //     device_name: String::new(),
+    //     num_bms: 4096,
+    //     workgroup_size: [32, 1],
+    //     /// Should be an odd number.
+    //     num_execs_gpu: 1001,
+    //     /// Should be an odd number.
+    //     num_execs_cpu: 101,
+    //     kernel_type: KernelType::Shuffle,
+    //     backend: BackendVariant::Vk,
+    //     timestamp_query_times: vec![],
+    //     instant_times: vec![],
+    // });
     tasks.push(Task {
         name: String::from("Vk-Threadgroup-0"),
         device_name: String::new(),
@@ -166,22 +173,18 @@ fn main() {
             #[cfg(feature = "vk")]
             BackendVariant::Vk => {
                 time_task::<Vulkan::Backend>(&vk_instance, task);
-            },
-            #[cfg(feature = "dx12")]
-            BackendVariant::Dx12 => {
-                match task.kernel_type {
-                    KernelType::Threadgroup => {
-                        #[cfg(feature = "dx12")]
-                        time_task::<Dx12::Backend>(&dx12_instance, task);
-                    },
-                    _ => {
-                        panic!("DX12 backend can only execute handle threadgroup kernel variant at the moment")
-                    }
-                }
-            },
-            _ => {
-                println!("Empty backend specified for task. Doing nothing.")
             }
+            #[cfg(feature = "dx12")]
+            BackendVariant::Dx12 => match task.kernel_type {
+                KernelType::Threadgroup => {
+                    #[cfg(feature = "dx12")]
+                    time_task::<Dx12::Backend>(&dx12_instance, task);
+                }
+                _ => panic!(
+                    "DX12 backend can only execute handle threadgroup kernel variant at the moment"
+                ),
+            },
+            _ => println!("Empty backend specified for task. Doing nothing."),
         }
         println!("{}", task);
     }
