@@ -1,0 +1,37 @@
+#version 450
+#extension GL_KHR_shader_subgroup_ballot: enable
+
+#define WORKGROUP_SIZE ~WG_SIZE~
+#define NUM_EXECUTIONS ~NUM_EXECS~
+
+layout(local_size_x = WORKGROUP_SIZE) in;
+
+layout(set = 0, binding = 0) buffer BM {
+    uint[32] bm[];
+};
+
+void main() {
+    // First, note that x/(2.pow(y)) = x >> y. In our case, 2.pow(5) = 32 is particularly relevant.
+    // Suppose that S subgroups can fit within a workgroup. S is stored in gl_NumSubgroups.
+    // Within a subgroup, how many groups of 32 are there? This is given by (gl_SubgroupSize >> 5).
+    // gl_SubgroupID gives us the ID of the subgroup this invocation is in, within the workgroup.
+    // Finally, if gl_SubgroupSize > 32, then (gl_SubgroupInvocationID >> 5) gives us the matrix ID within the subgroup.
+    uint global_bm_ix = (gl_SubgroupSize >> 5)*gl_NumSubgroups*gl_WorkGroupID.x + gl_SubgroupID +  (gl_SubgroupInvocationID >> 5);
+    uint row_id = mod(gl_SubgroupInvocationID, 32);
+
+    uint output_row;
+
+    for (uint iter = 0; iter < NUM_EXECUTIONS; iter++) {
+        uint row = bm[global_bm_ix][row_id];
+
+        for (uint i = 0; i < 32; i++) {
+            uint shift_mask = 1 << i;
+            uvec4 vote = subgroupBallot((row & shift_mask) != 0);
+            if (i == mod(gl_SubgroupInvocationID, 32)) {
+                output_row = vote[gl_SubgroupInvocationID >> 5];
+            }
+        }
+    }
+
+    bm[global_bm_ix][row_id] = output_row;
+}

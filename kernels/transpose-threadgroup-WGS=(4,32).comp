@@ -1,12 +1,18 @@
 #version 450
 #define WORKGROUP_SIZE 4
-#define NUM_EXECUTIONS 1001
 
 layout(local_size_x = WORKGROUP_SIZE, local_size_y = 32) in;
 
 layout(set = 0, binding = 0) buffer BM {
-//uint num_bms;
     uint[32] bms[];
+};
+struct Uniforms
+{
+    uint num_executions;
+};
+layout(set=0, binding = 1) uniform UniformInput
+{
+    Uniforms uniform_input;
 };
 
 uint shuffle_round(uint dst_tid, uint a, uint b, uint m, uint s) {
@@ -40,7 +46,7 @@ void main() {
     uint src_dat;
     uint dst_dat;
 
-    for (uint iter = 0; iter < NUM_EXECUTIONS; iter++) {
+    for (uint iter = 0; iter < uniform_input.num_executions; iter++) {
         dst_dat = bms[global_bm_ix][dst_tix];
         tg_bms[local_bm_ix][dst_tix] = dst_dat;
         memoryBarrierShared();

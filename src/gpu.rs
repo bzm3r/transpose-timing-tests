@@ -1,47 +1,20 @@
-extern crate gfx_hal as hal;
+extern crate shaderc;
 
 use crate::bitmats::BitMatrix;
+use crate::task::{KernelType, Task};
 use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, query};
 use std::{ptr, slice};
 
-use crate::{Task, KernelType};
-
-
-fn materialize_kernel(task: &Task) -> String {
-    let tp = format!("kernels/transpose-{}-template.comp", task.kernel_type);
-    let mut kernel =
-        std::fs::read_to_string(&tp).expect(&format!("could not kernel template at path: {}", &tp));
-
-    match task.kernel_type {
-        KernelType::Threadgroup => {
-            kernel = kernel.replace("~WG_SIZE~", &format!("{}", task.workgroup_size[0]));
-            kernel = kernel.replace("~NUM_EXECS~", &format!("{}", task.num_execs_gpu));
-        }
-        _ => unimplemented!(),
-    }
-
-    #[cfg(debug_assertions)]
-    std::fs::write(
-        format!(
-            "kernels/transpose-{}-WGS=({},{}).comp",
-            task.kernel_type, task.workgroup_size[0], task.workgroup_size[1],
-        ),
-        &kernel,
-    )
-    .unwrap();
-
-    kernel
-}
-
-const NVIDIA_1060: &str = "NVIDIA GeForce GTX 1060";
+const NVIDIA_GTX_1060: &str = "GeForce GTX 1060";
 const INTEL_HD_630: &str = "Intel(R) HD Graphics 630";
-const INTEL_IVY_MOBILE: &str = "Intel(R) Ivybridge Mobile";
-const INTEL_IRIS_640: &str = "Intel(R) Iris(TM) Plus Graphics 640";
+const INTEL_IVYBRIDGE_MOBILE: &str = "Intel(R) Ivybridge Mobile";
+const INTEL_IRIS_PLUS_640: &str = "Intel(R) Iris(TM) Plus Graphics 640";
 const INTEL_HD_520: &str = "Intel(R) HD Graphics 520";
-const RADEON_RX570: &str = "Radeon RX 570 Series";
+const AMD_RADEON_RX570: &str = "Radeon RX 570 Series";
+
 fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
     match physical_device_name {
-        NVIDIA_1060 => {
+        NVIDIA_GTX_1060 => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7922
             Ok(1.0e-6)
         }
@@ -49,11 +22,11 @@ fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7797
             Ok(83.333e-6)
         }
-        INTEL_IVY_MOBILE => {
+        INTEL_IVYBRIDGE_MOBILE => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7929
             Ok(80.0e-6)
         }
-        INTEL_IRIS_640 => {
+        INTEL_IRIS_PLUS_640 => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7855
             Ok(83.333e-6)
         }
@@ -61,7 +34,7 @@ fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7751
             Ok(83.333e-6)
         }
-        RADEON_RX570 => {
+        AMD_RADEON_RX570 => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7941
             Ok(40.0e-6)
         }
@@ -76,22 +49,31 @@ fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
     }
 }
 
+fn no_intel_for_subgroups(physical_device_name: &str, task: &Task) {
+    match physical_device_name {
+        NVIDIA_GTX_1060 | AMD_RADEON_RX570 => {}
+        INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => {
+            match task.kernel_type {
+                KernelType::Ballot | KernelType::Shuffle => {
+                    panic!("Don't run the subgroup kernels on Intel devices!")
+                }
+                _ => {}
+            }
+        }
+        _ => panic!("Unknown device! Please register with gpu.rs before proceeding."),
+    }
+}
+
 #[allow(dead_code)]
 fn dx12_get_timestamp_period(_physical_device_name: &str) -> Result<f32, String> {
     Err(String::from(
         "unable to determine timestamp period using gfx-rs for dx12 backend",
     ))
 }
+
 pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     #[cfg(debug_assertions)]
     env_logger::init();
-
-    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_random()).collect();
-    let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
-    let mut flat_raw_bms: Vec<u32> = Vec::new();
-    for raw_bm in raw_bms.iter() {
-        flat_raw_bms.extend_from_slice(&raw_bm[..]);
-    }
 
     let adapter = instance
         .enumerate_adapters()
@@ -102,6 +84,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
                 .any(|family| family.queue_type().supports_compute())
         })
         .expect("Failed to find a GPU with compute support!");
+    no_intel_for_subgroups(&adapter.info.name, task);
 
     let memory_properties = adapter.physical_device.memory_properties();
     // we pray that this adapter's graphics/compute queues also support timestamp queries
@@ -124,24 +107,41 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     #[cfg(feature = "metal")]
     let ts_grain = 1.0; // TODO
 
+    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_corner()).collect();
+    let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
+    let mut flat_raw_bms: Vec<u32> = Vec::new();
+    for raw_bm in raw_bms.iter() {
+        flat_raw_bms.extend_from_slice(&raw_bm[..]);
+    }
+
     task.device_name = adapter.info.name.clone();
     let queue_group = gpu.queue_groups.first_mut().unwrap();
 
-    let glsl = materialize_kernel(task);
-    let file = glsl_to_spirv::compile(&glsl, glsl_to_spirv::ShaderType::Compute).unwrap();
-    let spirv: Vec<u32> = pso::read_spirv(file).unwrap();
-    let kmod = unsafe { device.create_shader_module(&spirv) }.unwrap();
+    let kmod = {
+        let compiled_kernel = task.compile_kernel();
+        let spirv: Vec<u32> = pso::read_spirv(&compiled_kernel).unwrap();
+        unsafe { device.create_shader_module(&spirv) }.unwrap()
+    };
 
     let (pipeline_layout, pipeline, set_layout, mut desc_pool) = {
         let set_layout = unsafe {
             device.create_descriptor_set_layout(
-                &[pso::DescriptorSetLayoutBinding {
-                    binding: 0,
-                    ty: pso::DescriptorType::StorageBuffer,
-                    count: 1,
-                    stage_flags: pso::ShaderStageFlags::COMPUTE,
-                    immutable_samplers: false,
-                }],
+                &[
+                    pso::DescriptorSetLayoutBinding {
+                        binding: 0,
+                        ty: pso::DescriptorType::StorageBuffer,
+                        count: 1,
+                        stage_flags: pso::ShaderStageFlags::COMPUTE,
+                        immutable_samplers: false,
+                    },
+                    pso::DescriptorSetLayoutBinding {
+                        binding: 1,
+                        ty: pso::DescriptorType::UniformBuffer,
+                        count: 1,
+                        stage_flags: pso::ShaderStageFlags::COMPUTE,
+                        immutable_samplers: false,
+                    },
+                ],
                 &[],
             )
         }
@@ -165,10 +165,16 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
         let desc_pool = unsafe {
             device.create_descriptor_pool(
                 1,
-                &[pso::DescriptorRangeDesc {
-                    ty: pso::DescriptorType::StorageBuffer,
-                    count: 1,
-                }],
+                &[
+                    pso::DescriptorRangeDesc {
+                        ty: pso::DescriptorType::StorageBuffer,
+                        count: 1,
+                    },
+                    pso::DescriptorRangeDesc {
+                        ty: pso::DescriptorType::UniformBuffer,
+                        count: 1,
+                    },
+                ],
                 pso::DescriptorPoolCreateFlags::empty(),
             )
         }
@@ -177,6 +183,17 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     };
 
     let stride = std::mem::size_of::<u32>() as u64;
+    let (uniform_mem, uniform_buf, uniform_size) = unsafe {
+        create_buffer::<B>(
+            &device,
+            &memory_properties.memory_types,
+            memory::Properties::CPU_VISIBLE,
+            buffer::Usage::UNIFORM,
+            stride,
+            1,
+        )
+    };
+
     let (staging_mem, staging_buf, staging_size) = unsafe {
         create_buffer::<B>(
             &device,
@@ -190,13 +207,20 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
 
     unsafe {
         let mapping = device.map_memory(&staging_mem, 0..staging_size).unwrap();
-
         ptr::copy_nonoverlapping(
             flat_raw_bms.as_ptr() as *const u8,
             mapping,
             flat_raw_bms.len() * stride as usize,
         );
         device.unmap_memory(&staging_mem);
+
+        let mapping = device.map_memory(&uniform_mem, 0..uniform_size).unwrap();
+        ptr::copy_nonoverlapping(
+            vec![task.num_execs_gpu].as_ptr() as *const u8,
+            mapping,
+            1 * stride as usize,
+        );
+        device.unmap_memory(&uniform_mem);
     }
 
     let (device_mem, device_buf, _device_buffer_size) = unsafe {
@@ -218,13 +242,19 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             array_offset: 0,
             descriptors: Some(pso::Descriptor::Buffer(&device_buf, None..None)),
         }));
+        device.write_descriptor_sets(Some(pso::DescriptorSetWrite {
+            set: &ds,
+            binding: 1,
+            array_offset: 0,
+            descriptors: Some(pso::Descriptor::Buffer(&uniform_buf, None..None)),
+        }));
         ds
     };
 
     let mut cmd_pool =
         unsafe { device.create_command_pool(family.id(), pool::CommandPoolCreateFlags::empty()) }
             .expect("Can't create command pool");
-    let query_pool = unsafe { device.create_query_pool(query::Type::Timestamp, 2).unwrap() };
+    let query_pool = unsafe { device.create_query_pool(query::Type::Timestamp, 2).ok() };
     let fence = device.create_fence(false).unwrap();
 
     assert_eq!(task.num_bms % task.workgroup_size[0], 0);
@@ -233,7 +263,9 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
         unsafe {
             let mut cmd_buf = cmd_pool.allocate_one(command::Level::Primary);
             cmd_buf.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
-            cmd_buf.reset_query_pool(&query_pool, 0..2);
+            if let Some(query_pool) = query_pool.as_ref() {
+                cmd_buf.reset_query_pool(&query_pool, 0..2);
+            }
             cmd_buf.copy_buffer(
                 &staging_buf,
                 &device_buf,
@@ -261,21 +293,25 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
                 [&desc_set].iter().cloned(),
                 &[],
             );
-            cmd_buf.write_timestamp(
-                pso::PipelineStage::COMPUTE_SHADER,
-                query::Query {
-                    pool: &query_pool,
-                    id: 0,
-                },
-            );
+            if let Some(query_pool) = query_pool.as_ref() {
+                cmd_buf.write_timestamp(
+                    pso::PipelineStage::COMPUTE_SHADER,
+                    query::Query {
+                        pool: &query_pool,
+                        id: 0,
+                    },
+                );
+            }
             cmd_buf.dispatch([num_dispatch_groups as u32, 1, 1]);
-            cmd_buf.write_timestamp(
-                pso::PipelineStage::COMPUTE_SHADER,
-                query::Query {
-                    pool: &query_pool,
-                    id: 1,
-                },
-            );
+            if let Some(query_pool) = query_pool.as_ref() {
+                cmd_buf.write_timestamp(
+                    pso::PipelineStage::COMPUTE_SHADER,
+                    query::Query {
+                        pool: &query_pool,
+                        id: 1,
+                    },
+                );
+            }
             cmd_buf.pipeline_barrier(
                 pso::PipelineStage::COMPUTE_SHADER..pso::PipelineStage::TRANSFER,
                 memory::Dependencies::empty(),
@@ -329,22 +365,28 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
 
             for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                 if !(bm.transpose().identical_to(rbm)) {
-                    println!("input: {}", &bms[i]);
-                    println!("expected: {}", &bms[i].transpose());
-                    println!("got: {}", &result_bms[i]);
-                    panic!("bm {} not transposed correctly", i);
+                    task.delete_compiled_kernel();
+                    panic!(
+                        "\nGPU result {} incorrect!\ninput: {}\nexpected:{}\ngot: {}",
+                        i,
+                        &bms[i],
+                        &bms[i].transpose(),
+                        &result_bms[i]
+                    );
                 }
             }
             bms = result_bms;
-            println!("GPU results verified!");
+            println!("\nGPU results verified!");
         }
 
         let ts = unsafe {
             let mut ts = vec![0u32; 2];
             let raw_t = slice::from_raw_parts_mut(ts.as_mut_ptr() as *mut u8, 4 * 2);
-            device
-                .get_query_pool_results(&query_pool, 0..2, raw_t, 4, query::ResultFlags::WAIT)
-                .unwrap();
+            if let Some(query_pool) = query_pool.as_ref() {
+                device
+                    .get_query_pool_results(&query_pool, 0..2, raw_t, 4, query::ResultFlags::WAIT)
+                    .unwrap();
+            }
             ts
         };
         task.timestamp_query_times
@@ -352,7 +394,9 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     }
 
     unsafe {
-        device.destroy_query_pool(query_pool);
+        if let Some(query_pool) = query_pool {
+            device.destroy_query_pool(query_pool);
+        }
         device.destroy_command_pool(cmd_pool);
         device.destroy_descriptor_pool(desc_pool);
         device.destroy_descriptor_set_layout(set_layout);

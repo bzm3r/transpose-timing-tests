@@ -14,20 +14,23 @@ metal = ["gfx-backend-metal"]
 
 [dependencies]
 log = "0.4"
-gfx-hal = "0.4.1"
-glsl-to-spirv = "0.1.4"
+gfx-hal = { git = "https://github.com/bzm3r/gfx.git", rev = "4921b4e1"}
+shaderc = "0.6.1"
 rand = "0.7.3"
 env_logger = "0.6"
 
 [dependencies.gfx-backend-dx12]
-version = "0.4.2"
+git = "https://github.com/bzm3r/gfx.git"
+rev = "4921b4e1"
 optional = true
 
 [dependencies.gfx-backend-vulkan]
-version = "0.4.2"
+git = "https://github.com/bzm3r/gfx.git"
+rev = "4921b4e1"
 optional = true
 features = ["x11"]
 
 [dependencies.gfx-backend-metal]
-version = "0.4.2"
+git = "https://github.com/bzm3r/gfx.git"
+rev = "4921b4e1"
 optional = true
