@@ -188,7 +188,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
         create_buffer::<B>(
             &device,
             &memory_properties.memory_types,
-            memory::Properties::empty(),
+            memory::Properties::CPU_VISIBLE,
             buffer::Usage::UNIFORM,
             stride,
             1,

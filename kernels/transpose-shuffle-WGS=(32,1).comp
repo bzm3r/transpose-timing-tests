@@ -20,8 +20,8 @@ layout(set=0, binding = 1) uniform UniformInput
 };
 
 
-uint shuffle_round(uint lbm, uint m, uint s) {
-    uint b = subgroupShuffleXor(lbm, s);
+uint shuffle_round(uint r, uint m, uint s) {
+    uint b = subgroupShuffleXor(r, s);
     uint c;
     if ((gl_SubgroupInvocationID & s) == 0) {
         c = b << s;
@@ -29,7 +29,7 @@ uint shuffle_round(uint lbm, uint m, uint s) {
         m = ~m;
         c = b >> s;
     }
-    return (lbm & m) | (c & ~m);
+    return (r & m) | (c & ~m);
 }
 
 const uint shifts[5] = uint[5](16, 8, 4, 2, 1);
