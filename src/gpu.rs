@@ -4,7 +4,7 @@ extern crate shaderc;
 use crate::bitmats::BitMatrix;
 use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, query};
 use std::{ptr, slice};
-use crate::task::Task;
+use crate::task::{Task, KernelType};
 
 const NVIDIA_GTX_1060: &str = "GeForce GTX 1060";
 const INTEL_HD_630: &str = "Intel(R) HD Graphics 630";
@@ -50,6 +50,23 @@ fn vk_get_timestamp_period(physical_device_name: &str) -> Result<f32, String> {
     }
 }
 
+fn no_intel_for_subgroups(physical_device_name: &str, task: &Task) {
+    match physical_device_name {
+        NVIDIA_GTX_1060 | AMD_RADEON_RX570 => {},
+        INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => {
+            match task.kernel_type {
+                KernelType::Ballot | KernelType::Shuffle => {
+                    panic!("Don't run the subgroup kernels on Intel devices!")
+                },
+                _ => {}
+            }
+        }
+        _ => {
+            panic!("Unknown device! Please register with gpu.rs before proceeding.")
+        }
+    }
+}
+
 #[allow(dead_code)]
 fn dx12_get_timestamp_period(_physical_device_name: &str) -> Result<f32, String> {
     Err(String::from(
@@ -61,13 +78,6 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     #[cfg(debug_assertions)]
     env_logger::init();
 
-    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_random()).collect();
-    let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
-    let mut flat_raw_bms: Vec<u32> = Vec::new();
-    for raw_bm in raw_bms.iter() {
-        flat_raw_bms.extend_from_slice(&raw_bm[..]);
-    }
-
     let adapter = instance
         .enumerate_adapters()
         .into_iter()
@@ -77,6 +87,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
                 .any(|family| family.queue_type().supports_compute())
         })
         .expect("Failed to find a GPU with compute support!");
+    no_intel_for_subgroups(&adapter.info.name, task);
 
     let memory_properties = adapter.physical_device.memory_properties();
     // we pray that this adapter's graphics/compute queues also support timestamp queries
@@ -96,6 +107,13 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     let ts_grain = vk_get_timestamp_period(&adapter.info.name).unwrap() as f64;
     #[cfg(feature = "dx12")]
     let ts_grain = dx12_get_timestamp_period(&adapter.info.name).unwrap() as f64;
+
+    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_corner()).collect();
+    let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
+    let mut flat_raw_bms: Vec<u32> = Vec::new();
+    for raw_bm in raw_bms.iter() {
+        flat_raw_bms.extend_from_slice(&raw_bm[..]);
+    }
 
     task.device_name = adapter.info.name.clone();
     let queue_group = gpu.queue_groups.first_mut().unwrap();
@@ -343,7 +361,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                 if !(bm.transpose().identical_to(rbm)) {
                     task.delete_compiled_kernel();
-                    panic!("\nGPU result {} not transposed correctly!\ninput: {}\nexpected:{}\ngot: {}", i, &bms[i], &bms[i].transpose(), &result_bms[i]);
+                    panic!("\nGPU result {} incorrect!\ninput: {}\nexpected:{}\ngot: {}", i, &bms[i], &bms[i].transpose(), &result_bms[i]);
                 }
             }
             bms = result_bms;

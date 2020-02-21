@@ -23,7 +23,7 @@ layout(set=0, binding = 1) uniform UniformInput
 uint shuffle_round(uint lbm, uint m, uint s) {
     uint b = subgroupShuffleXor(lbm, s);
     uint c;
-    if ((gl_SubgroupInvocationID.x & s) == 0) {
+    if ((gl_SubgroupInvocationID & s) == 0) {
         c = b << s;
     } else {
         m = ~m;
@@ -36,7 +36,6 @@ const uint shifts[5] = uint[5](16, 8, 4, 2, 1);
 const uint masks[5] = uint[5](0xffff, 0xff00ff, 0xf0f0f0f, 0x33333333, 0x55555555);
 
 void main() {
-    uint row;
     uint m;
     uint s;
 
@@ -48,7 +47,7 @@ void main() {
     uint global_bm_ix = (gl_SubgroupSize >> 5)*gl_NumSubgroups*gl_WorkGroupID.x + gl_SubgroupID +  (gl_SubgroupInvocationID >> 5);
     uint row_id = gl_SubgroupInvocationID & 31;
     uint global_row = bms[global_bm_ix][row_id];
-    uint row = global_row;
+    uint row;
     for (uint iter = 0; iter < uniform_input.num_executions; iter++) {
         row = global_row;
         for (uint i = 0; i < 5; i++) {

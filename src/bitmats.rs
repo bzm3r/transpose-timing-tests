@@ -17,6 +17,20 @@ impl BitMatrix {
         BitMatrix(bm)
     }
 
+    pub fn new_diagonal() -> BitMatrix {
+        let mut bm: [[bool; 32]; 32] = [[false; 32]; 32];
+        for i in 0..32 {
+            bm[i][i] = true;
+        }
+        BitMatrix(bm)
+    }
+
+    pub fn new_corner() -> BitMatrix {
+        let mut bm: [[bool; 32]; 32] = [[false; 32]; 32];
+        bm[0][31] = true;
+        BitMatrix(bm)
+    }
+
     pub fn transpose(&self) -> BitMatrix {
         let mut bm: [[bool; 32]; 32] = [[false; 32]; 32];
         for i in 0..32 {
