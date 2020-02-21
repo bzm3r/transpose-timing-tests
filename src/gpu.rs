@@ -4,40 +4,7 @@ extern crate shaderc;
 use crate::bitmats::BitMatrix;
 use hal::{adapter::MemoryType, buffer, command, memory, pool, prelude::*, pso, query};
 use std::{ptr, slice};
-
-use std::fs::OpenOptions;
-use std::io::prelude::*;
-
-use crate::{KernelType, Task};
-
-fn materialize_kernel(task: &Task) -> (String, String) {
-    let tp = format!("kernels/transpose-{}-template.comp", task.kernel_type);
-    let mut kernel =
-        std::fs::read_to_string(&tp).expect(&format!("could not kernel template at path: {}", &tp));
-
-    match task.kernel_type {
-        KernelType::Threadgroup => {
-            kernel = kernel.replace("~WG_SIZE~", &format!("{}", task.workgroup_size[0]));
-            kernel = kernel.replace("~NUM_EXECS~", &format!("{}", task.num_execs_gpu));
-        }
-        _ => {
-            if task.workgroup_size[1] > 1 {
-                panic!("does not make sense to have Y-dimension in workgroup size for subgroup kernels");
-            }
-            kernel = kernel.replace("~WG_SIZE~", &format!("{}", task.workgroup_size[0]));
-            kernel = kernel.replace("~NUM_EXECS~", &format!("{}", task.num_execs_gpu));
-        }
-    }
-
-    let kernel_name = format!(
-        "transpose-{}-WGS=({},{})",
-        task.kernel_type, task.workgroup_size[0], task.workgroup_size[1]
-    );
-    #[cfg(debug_assertions)]
-    std::fs::write(format!("kernels/{}.comp", &kernel_name,), &kernel).unwrap();
-
-    (kernel, kernel_name)
-}
+use crate::task::Task;
 
 const NVIDIA_GTX_1060: &str = "GeForce GTX 1060";
 const INTEL_HD_630: &str = "Intel(R) HD Graphics 630";
@@ -90,44 +57,6 @@ fn dx12_get_timestamp_period(_physical_device_name: &str) -> Result<f32, String>
     ))
 }
 
-fn compile_kernel(task: &mut Task) -> std::fs::File {
-    let (glsl, kernel_name) = materialize_kernel(task);
-    let kernel_fp = format!("kernels/{}.spv", &kernel_name);
-    match OpenOptions::new().read(true).open(&kernel_fp) {
-        Ok(f) => {
-            println!("{} kernel already compiled...", &kernel_name);
-            f
-        },
-        Err(_) => {
-            println!("compiling kernel {}...", &kernel_name);
-            let mut compiler = shaderc::Compiler::new().unwrap();
-            let mut options = shaderc::CompileOptions::new().unwrap();
-            options.set_target_env(
-                shaderc::TargetEnv::Vulkan,
-                ((1 as u32) << 22) | ((1 as u32) << 12),
-            );
-            let artifact = compiler
-                .compile_into_spirv(
-                    &glsl,
-                    shaderc::ShaderKind::Compute,
-                    &format!("{}.glsl", kernel_name),
-                    "main",
-                    Some(&options),
-                )
-                .unwrap();
-            let mut compiled_kernel = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .open(&kernel_fp)
-                .unwrap();
-            compiled_kernel.write_all(artifact.as_binary_u8()).unwrap();
-
-            compiled_kernel
-        }
-    }
-}
-
 pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     #[cfg(debug_assertions)]
     env_logger::init();
@@ -171,26 +100,30 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     task.device_name = adapter.info.name.clone();
     let queue_group = gpu.queue_groups.first_mut().unwrap();
 
-    let compiled_kernel = compile_kernel(task);
-    let spirv: Vec<u32> = pso::read_spirv(&compiled_kernel).unwrap();
-    let kmod = unsafe { device.create_shader_module(&spirv) }.unwrap();
+    let kmod = {
+        let compiled_kernel = task.compile_kernel();
+        let spirv: Vec<u32> = pso::read_spirv(&compiled_kernel).unwrap();
+        unsafe { device.create_shader_module(&spirv) }.unwrap()
+    };
 
     let (pipeline_layout, pipeline, set_layout, mut desc_pool) = {
         let set_layout = unsafe {
             device.create_descriptor_set_layout(
-                &[pso::DescriptorSetLayoutBinding {
-                    binding: 0,
-                    ty: pso::DescriptorType::StorageBuffer,
-                    count: 1,
-                    stage_flags: pso::ShaderStageFlags::COMPUTE,
-                    immutable_samplers: false,
-                }, pso::DescriptorSetLayoutBinding {
-                    binding: 1,
-                    ty: pso::DescriptorType::UniformBuffer,
-                    count: 1,
-                    stage_flags: pso::ShaderStageFlags::COMPUTE,
-                    immutable_samplers: false,
-                },
+                &[
+                    pso::DescriptorSetLayoutBinding {
+                        binding: 0,
+                        ty: pso::DescriptorType::StorageBuffer,
+                        count: 1,
+                        stage_flags: pso::ShaderStageFlags::COMPUTE,
+                        immutable_samplers: false,
+                    },
+                    pso::DescriptorSetLayoutBinding {
+                        binding: 1,
+                        ty: pso::DescriptorType::UniformBuffer,
+                        count: 1,
+                        stage_flags: pso::ShaderStageFlags::COMPUTE,
+                        immutable_samplers: false,
+                    },
                 ],
                 &[],
             )
@@ -215,14 +148,16 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
         let desc_pool = unsafe {
             device.create_descriptor_pool(
                 1,
-                &[pso::DescriptorRangeDesc {
-                    ty: pso::DescriptorType::StorageBuffer,
-                    count: 1,
-                },
+                &[
+                    pso::DescriptorRangeDesc {
+                        ty: pso::DescriptorType::StorageBuffer,
+                        count: 1,
+                    },
                     pso::DescriptorRangeDesc {
                         ty: pso::DescriptorType::UniformBuffer,
                         count: 1,
-                    }],
+                    },
+                ],
                 pso::DescriptorPoolCreateFlags::empty(),
             )
         }
@@ -407,14 +342,12 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
 
             for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                 if !(bm.transpose().identical_to(rbm)) {
-                    println!("input: {}", &bms[i]);
-                    println!("expected: {}", &bms[i].transpose());
-                    println!("got: {}", &result_bms[i]);
-                    panic!("bm {} not transposed correctly", i);
+                    task.delete_compiled_kernel();
+                    panic!("\nGPU result {} not transposed correctly!\ninput: {}\nexpected:{}\ngot: {}", i, &bms[i], &bms[i].transpose(), &result_bms[i]);
                 }
             }
             bms = result_bms;
-            println!("GPU results verified!");
+            println!("\nGPU results verified!");
         }
 
         let ts = unsafe {
