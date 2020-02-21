@@ -10,6 +10,7 @@ edition = "2018"
 default = ["gfx-backend-dx12", "gfx-backend-vulkan"]
 dx12 = ["gfx-backend-dx12"]
 vk = ["gfx-backend-vulkan"]
+metal = ["gfx-backend-metal"]
 
 [dependencies]
 log = "0.4"
@@ -26,3 +27,7 @@ optional = true
 version = "0.4.2"
 optional = true
 features = ["x11"]
+
+[dependencies.gfx-backend-metal]
+version = "0.4.2"
+optional = true

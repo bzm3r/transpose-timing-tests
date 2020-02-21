@@ -37,6 +37,8 @@ pub enum BackendVariant {
     Vk,
     #[cfg(feature = "dx12")]
     Dx12,
+    #[cfg(feature = "metal")]
+    Metal,
     Empty,
 }
 
@@ -145,6 +147,10 @@ fn main() {
     let dx12_instance = Dx12::Instance::create("dx12-back", 1)
         .expect(&format!("could not create DX12 instance"));
 
+    #[cfg(feature = "metal")]
+    let metal_instance = gfx_backend_metal::Instance::create("metal-back", 1)
+        .expect("could not create Metal instance");
+
     let mut tasks = Vec::<Task>::new();
     tasks.push(Task {
         name: String::from("Vk-Threadgroup-0"),
@@ -156,7 +162,7 @@ fn main() {
         /// Should be an odd number.
         num_execs_cpu: 101,
         kernel_type: KernelType::Threadgroup,
-        backend: BackendVariant::Vk,
+        backend: BackendVariant::Metal,
         timestamp_query_times: vec![],
         instant_times: vec![],
     });
@@ -179,6 +185,10 @@ fn main() {
                     }
                 }
             },
+            #[cfg(feature = "metal")]
+            BackendVariant::Metal => {
+                time_task::<gfx_backend_metal::Backend>(&metal_instance, task);
+            }
             _ => {
                 println!("Empty backend specified for task. Doing nothing.")
             }

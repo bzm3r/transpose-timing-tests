@@ -121,6 +121,8 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     let ts_grain = vk_get_timestamp_period(&adapter.info.name).unwrap() as f64;
     #[cfg(feature = "dx12")]
     let ts_grain = dx12_get_timestamp_period(&adapter.info.name).unwrap() as f64;
+    #[cfg(feature = "metal")]
+    let ts_grain = 1.0; // TODO
 
     task.device_name = adapter.info.name.clone();
     let queue_group = gpu.queue_groups.first_mut().unwrap();
