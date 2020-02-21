@@ -47,9 +47,10 @@ void main() {
     // Finally, if gl_SubgroupSize > 32, then (gl_SubgroupInvocationID >> 5) gives us the matrix ID within the subgroup.
     uint global_bm_ix = (gl_SubgroupSize >> 5)*gl_NumSubgroups*gl_WorkGroupID.x + gl_SubgroupID +  (gl_SubgroupInvocationID >> 5);
     uint row_id = gl_SubgroupInvocationID & 31;
+    uint global_row = bms[global_bm_ix][row_id];
+    uint row = global_row;
     for (uint iter = 0; iter < uniform_input.num_executions; iter++) {
-        row = bms[global_bm_ix][row_id];
-
+        row = global_row;
         for (uint i = 0; i < 5; i++) {
             m = masks[i];
             s = shifts[i];
