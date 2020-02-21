@@ -89,6 +89,45 @@ fn dx12_get_timestamp_period(_physical_device_name: &str) -> Result<f32, String>
         "unable to determine timestamp period using gfx-rs for dx12 backend",
     ))
 }
+
+fn compile_kernel(task: &mut Task) -> std::fs::File {
+    let (glsl, kernel_name) = materialize_kernel(task);
+    let kernel_fp = format!("kernels/{}.spv", &kernel_name);
+    match OpenOptions::new().read(true).open(&kernel_fp) {
+        Ok(f) => {
+            println!("kernel already compiled...");
+            f
+        },
+        Err(_) => {
+            println!("compiling kernel...");
+            let mut compiler = shaderc::Compiler::new().unwrap();
+            let mut options = shaderc::CompileOptions::new().unwrap();
+            options.set_target_env(
+                shaderc::TargetEnv::Vulkan,
+                ((1 as u32) << 22) | ((1 as u32) << 12),
+            );
+            let artifact = compiler
+                .compile_into_spirv(
+                    &glsl,
+                    shaderc::ShaderKind::Compute,
+                    &format!("{}.glsl", kernel_name),
+                    "main",
+                    Some(&options),
+                )
+                .unwrap();
+            let mut compiled_kernel = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(&kernel_fp)
+                .unwrap();
+            compiled_kernel.write_all(artifact.as_binary_u8()).unwrap();
+
+            compiled_kernel
+        }
+    }
+}
+
 pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     #[cfg(debug_assertions)]
     env_logger::init();
@@ -132,29 +171,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     task.device_name = adapter.info.name.clone();
     let queue_group = gpu.queue_groups.first_mut().unwrap();
 
-    let (glsl, kernel_name) = materialize_kernel(task);
-    let mut compiler = shaderc::Compiler::new().unwrap();
-    let mut options = shaderc::CompileOptions::new().unwrap();
-    options.set_target_env(
-        shaderc::TargetEnv::Vulkan,
-        ((1 as u32) << 22) | ((1 as u32) << 12),
-    );
-    let artifact = compiler
-        .compile_into_spirv(
-            &glsl,
-            shaderc::ShaderKind::Compute,
-            &format!("{}.glsl", kernel_name),
-            "main",
-            Some(&options),
-        )
-        .unwrap();
-    let mut compiled_kernel = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .open(format!("kernels/{}.spv", &kernel_name))
-        .unwrap();
-    compiled_kernel.write_all(artifact.as_binary_u8()).unwrap();
+    let compiled_kernel = compile_kernel(task);
     let spirv: Vec<u32> = pso::read_spirv(&compiled_kernel).unwrap();
     let kmod = unsafe { device.create_shader_module(&spirv) }.unwrap();
 
@@ -197,7 +214,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
 
         let desc_pool = unsafe {
             device.create_descriptor_pool(
-                2,
+                1,
                 &[pso::DescriptorRangeDesc {
                     ty: pso::DescriptorType::StorageBuffer,
                     count: 1,
@@ -225,7 +242,6 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
         )
     };
 
-    let stride = std::mem::size_of::<u32>() as u64;
     let (staging_mem, staging_buf, staging_size) = unsafe {
         create_buffer::<B>(
             &device,
@@ -239,7 +255,6 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
 
     unsafe {
         let mapping = device.map_memory(&staging_mem, 0..staging_size).unwrap();
-
         ptr::copy_nonoverlapping(
             flat_raw_bms.as_ptr() as *const u8,
             mapping,
@@ -248,9 +263,8 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
         device.unmap_memory(&staging_mem);
 
         let mapping = device.map_memory(&uniform_mem, 0..uniform_size).unwrap();
-
         ptr::copy_nonoverlapping(
-            task.num_execs_gpu as *const u8,
+            vec![task.num_execs_gpu].as_ptr() as *const u8,
             mapping,
             1 * stride as usize,
         );
