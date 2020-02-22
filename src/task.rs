@@ -198,15 +198,15 @@ impl fmt::Display for Task {
     }
 }
 
-pub fn generate_threadgroup_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
+pub fn generate_threadgroup_tasks(num_execs_cpu: u32, num_execs_gpu: u32) -> Vec<Task> {
     let mut tasks = Vec::<Task>::new();
 
-    for n in 1..(max_workgroup_x + 1) {
+    for n in 0u32..8 {
         tasks.push(Task {
-            name: format!("Vk-Threadgroup-TG={}", n*32),
+            name: format!("Vk-Threadgroup-TG={}", 2u32.pow(n)*32),
             device_name: String::new(),
             num_bms: 4096,
-            workgroup_size: [n, 32],
+            workgroup_size: [2u32.pow(n), 32],
             /// Should be an odd number.
             num_execs_gpu,
             /// Should be an odd number.
@@ -221,15 +221,15 @@ pub fn generate_threadgroup_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_wo
     tasks
 }
 
-pub fn generate_64multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
+pub fn generate_64multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32) -> Vec<Task> {
     let mut tasks = Vec::<Task>::new();
 
-    for n in 1..(max_workgroup_x + 1) {
+    for n in 6u32..11 {
         tasks.push(Task {
-            name: String::from(format!("Vk-ShuffleAMD-WG={}", n*64)),
+            name: String::from(format!("Vk-ShuffleAMD-WG={}", 2u32.pow(n))),
             device_name: String::new(),
             num_bms: 4096,
-            workgroup_size: [n*64, 1],
+            workgroup_size: [2u32.pow(n), 1],
             /// Should be an odd number.
             num_execs_gpu,
             /// Should be an odd number.
@@ -247,12 +247,12 @@ pub fn generate_64multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u3
 pub fn generate_32multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
     let mut tasks = Vec::<Task>::new();
 
-    for n in 1..(max_workgroup_x + 1) {
+    for n in 5u32..11 {
         tasks.push(Task {
-            name: String::from(format!("Vk-Shuffle32-WG={}", n*32)),
+            name: String::from(format!("Vk-Shuffle32-WG={}", 2u32.pow(n))),
             device_name: String::new(),
             num_bms: 4096,
-            workgroup_size: [n*32, 1],
+            workgroup_size: [2u32.pow(n), 1],
             /// Should be an odd number.
             num_execs_gpu,
             /// Should be an odd number.
@@ -267,15 +267,15 @@ pub fn generate_32multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u3
     tasks
 }
 
-pub fn generate_hybrid_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
+pub fn generate_hybrid_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32) -> Vec<Task> {
     let mut tasks = Vec::<Task>::new();
 
-    for n in 1..(max_workgroup_x + 1) {
+    for n in 5u32..10 {
         tasks.push(Task {
-            name: format!("Vk-HybridShuffle-TG={}", n*32),
+            name: format!("Vk-HybridShuffle-TG={}", 2u32.pow(n)),
             device_name: String::new(),
             num_bms: 4096,
-            workgroup_size: [n*32, 1],
+            workgroup_size: [2u32.pow(n), 1],
             /// Should be an odd number.
             num_execs_gpu,
             /// Should be an odd number.
