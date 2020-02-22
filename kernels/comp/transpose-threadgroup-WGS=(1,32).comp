@@ -1,5 +1,5 @@
 #version 450
-#define WORKGROUP_SIZE ~WG_SIZE~
+#define WORKGROUP_SIZE 1
 
 layout(local_size_x = WORKGROUP_SIZE, local_size_y = 32) in;
 
@@ -47,20 +47,31 @@ void main() {
         uint s;
         uint src_tix;
         uint src_dat;
-        uint dst_dat = bms[global_bm_ix][dst_tix];
+        uint dst_dat;
 
         for (uint iter = 0; iter < u_consts.num_executions; iter++) {
+            dst_dat = bms[global_bm_ix][dst_tix];
+
             for (int i = 0; i < 5; i++) {
                 tg_bms[local_bm_ix][dst_tix] = dst_dat;
+                memoryBarrierShared();
                 barrier();
 
                 s = shifts[i];
 
                 src_tix = dst_tix^s;
                 src_dat = tg_bms[local_bm_ix][src_tix];
+                memoryBarrierShared();
                 barrier();
 
                 dst_dat = shuffle_round(dst_tix, dst_dat, src_dat, masks[i], s);
+
+//                // on the last iteration, we don't need to store the result back into threadgroup shared memory?
+//                if (i < 4) {
+//                    tg_bms[local_bm_ix][dst_tix] = dst_dat;
+//                    memoryBarrierShared();
+//                    barrier();
+//                }
             }
         }
 

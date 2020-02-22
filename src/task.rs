@@ -8,6 +8,7 @@ pub enum KernelType {
     Threadgroup,
     Ballot,
     Shuffle,
+    HybridShuffle,
 }
 
 impl fmt::Display for KernelType {
@@ -16,6 +17,7 @@ impl fmt::Display for KernelType {
             KernelType::Threadgroup => write!(f, "{}", "threadgroup"),
             KernelType::Ballot => write!(f, "{}", "ballot"),
             KernelType::Shuffle => write!(f, "{}", "shuffle"),
+            KernelType::HybridShuffle => write!(f, "{}", "hybrid-shuffle"),
         }
     }
 }
@@ -127,14 +129,12 @@ impl Task {
         match self.kernel_type {
             KernelType::Threadgroup => {
                 kernel = kernel.replace("~WG_SIZE~", &format!("{}", self.workgroup_size[0]));
-                kernel = kernel.replace("~NUM_EXECS~", &format!("{}", self.num_execs_gpu));
             }
             _ => {
                 if self.workgroup_size[1] > 1 {
                     panic!("does not make sense to have Y-dimension in workgroup size for subgroup kernels");
                 }
                 kernel = kernel.replace("~WG_SIZE~", &format!("{}", self.workgroup_size[0]));
-                kernel = kernel.replace("~NUM_EXECS~", &format!("{}", self.num_execs_gpu));
             }
         }
 
@@ -198,7 +198,7 @@ impl fmt::Display for Task {
     }
 }
 
-pub fn generate_threadgroup_tasks(max_workgroup_x: u32) -> Vec<Task> {
+pub fn generate_threadgroup_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
     let mut tasks = Vec::<Task>::new();
 
     for n in 1..(max_workgroup_x + 1) {
@@ -208,9 +208,9 @@ pub fn generate_threadgroup_tasks(max_workgroup_x: u32) -> Vec<Task> {
             num_bms: 4096,
             workgroup_size: [n, 32],
             /// Should be an odd number.
-            num_execs_gpu: 5001,
+            num_execs_gpu,
             /// Should be an odd number.
-            num_execs_cpu: 1001,
+            num_execs_cpu,
             kernel_type: KernelType::Threadgroup,
             backend: BackendVariant::Vk,
             timestamp_query_times: vec![],
@@ -221,7 +221,7 @@ pub fn generate_threadgroup_tasks(max_workgroup_x: u32) -> Vec<Task> {
     tasks
 }
 
-pub fn generate_64multiplier_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
+pub fn generate_64multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
     let mut tasks = Vec::<Task>::new();
 
     for n in 1..(max_workgroup_x + 1) {
@@ -231,9 +231,9 @@ pub fn generate_64multiplier_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
             num_bms: 4096,
             workgroup_size: [n*64, 1],
             /// Should be an odd number.
-            num_execs_gpu: 5001,
+            num_execs_gpu,
             /// Should be an odd number.
-            num_execs_cpu: 1001,
+            num_execs_cpu,
             kernel_type: KernelType::Shuffle,
             backend: BackendVariant::Vk,
             timestamp_query_times: vec![],
@@ -244,7 +244,7 @@ pub fn generate_64multiplier_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
     tasks
 }
 
-pub fn generate_32multiplier_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
+pub fn generate_32multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
     let mut tasks = Vec::<Task>::new();
 
     for n in 1..(max_workgroup_x + 1) {
@@ -254,9 +254,9 @@ pub fn generate_32multiplier_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
             num_bms: 4096,
             workgroup_size: [n*32, 1],
             /// Should be an odd number.
-            num_execs_gpu: 5001,
+            num_execs_gpu,
             /// Should be an odd number.
-            num_execs_cpu: 1001,
+            num_execs_cpu,
             kernel_type: KernelType::Shuffle,
             backend: BackendVariant::Vk,
             timestamp_query_times: vec![],
@@ -267,3 +267,25 @@ pub fn generate_32multiplier_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
     tasks
 }
 
+pub fn generate_hybrid_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
+    let mut tasks = Vec::<Task>::new();
+
+    for n in 1..(max_workgroup_x + 1) {
+        tasks.push(Task {
+            name: format!("Vk-HybridShuffle-TG={}", n*32),
+            device_name: String::new(),
+            num_bms: 4096,
+            workgroup_size: [n*32, 1],
+            /// Should be an odd number.
+            num_execs_gpu,
+            /// Should be an odd number.
+            num_execs_cpu,
+            kernel_type: KernelType::HybridShuffle,
+            backend: BackendVariant::Vk,
+            timestamp_query_times: vec![],
+            instant_times: vec![],
+        })
+    }
+
+    tasks
+}

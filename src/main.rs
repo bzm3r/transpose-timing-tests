@@ -26,7 +26,7 @@ fn main() {
     let dx12_instance =
         Dx12::Instance::create("dx12-back", 1).expect(&format!("could not create DX12 instance"));
 
-    let mut test_tasks = task::generate_64multiplier_shuffle_tasks(16);
+    let mut test_tasks = task::generate_hybrid_shuffle_tasks(101, 1001, 1);
 
     for task in test_tasks.iter_mut() {
         match task.backend {
