@@ -81,7 +81,7 @@ impl Task {
 
     pub fn compile_kernel(&self) -> std::fs::File {
         let kernel_name = self.kernel_name();
-        let kernel_fp = format!("kernels/{}.spv", &kernel_name);
+        let kernel_fp = format!("kernels/spv/{}.spv", &kernel_name);
         match OpenOptions::new().read(true).open(&kernel_fp) {
             Ok(f) => {
                 println!("{} kernel already compiled...", &kernel_name);
@@ -120,7 +120,7 @@ impl Task {
     }
 
     pub fn materialize_kernel(&self) -> String {
-        let tp = format!("kernels/transpose-{}-template.comp", self.kernel_type);
+        let tp = format!("kernels/templates/transpose-{}-template.comp", self.kernel_type);
         let mut kernel =
             std::fs::read_to_string(&tp).expect(&format!("could not kernel template at path: {}", &tp));
 
@@ -139,7 +139,7 @@ impl Task {
         }
 
         #[cfg(debug_assertions)]
-            std::fs::write(format!("kernels/{}.comp", &self.kernel_name()), &kernel).unwrap();
+            std::fs::write(format!("kernels/comp/{}.comp", &self.kernel_name()), &kernel).unwrap();
 
         kernel
     }
@@ -152,7 +152,7 @@ impl Task {
     }
 
     pub fn delete_compiled_kernel(&self) {
-        let kp = format!("kernels/{}.spv", self.kernel_name());
+        let kp = format!("kernels/spv/{}.spv", self.kernel_name());
         match std::fs::read(&kp) {
             Ok(_) => {
                 std::fs::remove_file(&kp).expect("could not delete compiled kernel");
@@ -221,7 +221,7 @@ pub fn generate_threadgroup_tasks(max_workgroup_x: u32) -> Vec<Task> {
     tasks
 }
 
-pub fn generate_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
+pub fn generate_64multiplier_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
     let mut tasks = Vec::<Task>::new();
 
     for n in 1..(max_workgroup_x + 1) {
@@ -243,3 +243,27 @@ pub fn generate_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
 
     tasks
 }
+
+pub fn generate_32multiplier_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
+    let mut tasks = Vec::<Task>::new();
+
+    for n in 1..(max_workgroup_x + 1) {
+        tasks.push(Task {
+            name: String::from(format!("Vk-Shuffle32-WG={}", n*32)),
+            device_name: String::new(),
+            num_bms: 4096,
+            workgroup_size: [n*32, 1],
+            /// Should be an odd number.
+            num_execs_gpu: 5001,
+            /// Should be an odd number.
+            num_execs_cpu: 1001,
+            kernel_type: KernelType::Shuffle,
+            backend: BackendVariant::Vk,
+            timestamp_query_times: vec![],
+            instant_times: vec![],
+        })
+    }
+
+    tasks
+}
+

@@ -261,10 +261,11 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             (task.num_bms + task.workgroup_size[0] - 1)/task.workgroup_size[0]
         },
         _ => {
-            task.num_bms/(task.workgroup_size[0] / 32)
+            let num_mats_per_wg = (task.workgroup_size[0] / 32);
+            (task.num_bms + num_mats_per_wg - 1)/num_mats_per_wg
         }
     };
-
+    println!("num bms: {}, num dispatch groups: {}", task.num_bms, num_dispatch_groups);
     for i in 0..task.num_execs_cpu {
         unsafe {
             let mut cmd_buf = cmd_pool.allocate_one(command::Level::Primary);
@@ -362,6 +363,10 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
                         .expect("could not construct BitMatrix from u32 slice")
                 })
                 .collect();
+
+            // for i in 0..9 {
+            //     println!("rbm {}: {}", i, &result_bms[i]);
+            // }
 
             for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                 if !(bm.transpose().identical_to(rbm)) {

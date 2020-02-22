@@ -38,27 +38,36 @@ const uint masks[5] = uint[5](0xffff, 0xff00ff, 0xf0f0f0f, 0x33333333, 0x5555555
 
 void main() {
     // First, note that x/(2.pow(y)) = x >> y. In our case, 2.pow(5) = 32 is particularly relevant.
-    // Suppose that S subgroups can fit within a workgroup. S is stored in gl_NumSubgroups.
+    // gl_NumSubgroups stores the number of subgroups within a workgroup.
     // Within a subgroup, how many groups of 32 are there? This is given by (gl_SubgroupSize >> 5).
+    // It could be though, that the workgroup size is smaller than the subgroup size.
+    // So, the number of matrices that can be handled by a workgroup is: min(gl_WorkGroupSize >> 5, gl_SubgroupSize >> 5).
     // gl_SubgroupID gives us the ID of the subgroup this invocation is in, within the workgroup.
     // Finally, if gl_SubgroupSize > 32, then (gl_SubgroupInvocationID >> 5) gives us the matrix ID within the subgroup.
-    uint global_bm_ix = (gl_SubgroupSize >> 5)*gl_NumSubgroups*gl_WorkGroupID.x + gl_SubgroupID +  (gl_SubgroupInvocationID >> 5);
+
+//    uint log2_sg_size = findMSB(gl_SubgroupSize);
+//    uint sgs_per_wg = gl_WorkGroupSize.x >> log2_sg_size;
+    uint mats_per_sg = gl_SubgroupSize >> 5;
+    uint global_bm_ix = gl_NumSubgroups*mats_per_sg*gl_WorkGroupID.x + mats_per_sg*gl_SubgroupID + (gl_SubgroupInvocationID >> 5);
 
     if (global_bm_ix < u_consts.num_bms) {
-        uint m;
-        uint s;
-
         uint row_id = gl_SubgroupInvocationID & 31;
         uint global_row = bms[global_bm_ix][row_id];
         uint row;
+
         for (uint iter = 0; iter < u_consts.num_executions; iter++) {
             row = global_row;
-            for (uint i = 0; i < 5; i++) {
-                m = masks[i];
-                s = shifts[i];
-
-                row = shuffle_round(row, m, s);
-            }
+            row = shuffle_round(row, 0xffff, 16);
+            row = shuffle_round(row, 0xff00ff, 8);
+            row = shuffle_round(row, 0xf0f0f0f, 4);
+            row = shuffle_round(row, 0x33333333, 2);
+            row = shuffle_round(row, 0x55555555, 1);
+//            for (uint i = 0; i < 5; i++) {
+//                m = masks[i];
+//                s = shifts[i];
+//
+//                row = shuffle_round(row, m, s);
+//            }
         }
         bms[global_bm_ix][row_id] = row;
     }
