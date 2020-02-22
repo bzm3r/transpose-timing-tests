@@ -31,7 +31,7 @@ uint shuffle_round_tg(uint dst_tid, uint a, uint b, uint m, uint s) {
 uint shuffle_round(uint a, uint m, uint s) {
     uint b = subgroupShuffleXor(a, s);
     uint c;
-    if ((gl_SubgroupInvocationID & s) == 0) {
+    if ((gl_LocalInvocationID.x & s) == 0) {
         c = b << s;
     } else {
         m = ~m;
@@ -78,6 +78,6 @@ void main() {
             }
         }
 
-        bms[global_bm_ix][dst_tix] = dst_dat;
+        bms[global_bm_ix][dst_tix] = gl_SubgroupSize;
     }
 }
