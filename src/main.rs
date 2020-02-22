@@ -28,7 +28,7 @@ fn main() {
         name: String::from("Vk-Shuffle-0"),
         device_name: String::new(),
         num_bms: 4096,
-        workgroup_size: [32, 1],
+        workgroup_size: [64, 1],
         /// Should be an odd number.
         num_execs_gpu: 1001,
         /// Should be an odd number.
@@ -38,6 +38,7 @@ fn main() {
         timestamp_query_times: vec![],
         instant_times: vec![],
     });
+
     // tasks.push(Task {
     //     name: String::from("Vk-Threadgroup-0"),
     //     device_name: String::new(),

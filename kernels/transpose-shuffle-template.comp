@@ -16,7 +16,7 @@ struct Uniforms
 };
 layout(set=0, binding = 1) uniform UniformInput
 {
-    Uniforms uniform_input;
+    Uniforms u_consts;
 };
 
 
@@ -48,7 +48,7 @@ void main() {
     uint row_id = gl_SubgroupInvocationID & 31;
     uint global_row = bms[global_bm_ix][row_id];
     uint row;
-    for (uint iter = 0; iter < uniform_input.num_executions; iter++) {
+    for (uint iter = 0; iter < u_consts.num_executions; iter++) {
         row = global_row;
         for (uint i = 0; i < 5; i++) {
             m = masks[i];
@@ -57,6 +57,5 @@ void main() {
             row = shuffle_round(row, m, s);
         }
     }
-
     bms[global_bm_ix][row_id] = row;
 }

@@ -27,7 +27,7 @@ impl BitMatrix {
 
     pub fn new_corner() -> BitMatrix {
         let mut bm: [[bool; 32]; 32] = [[false; 32]; 32];
-        bm[0][31] = true;
+        bm[0][0] = true;
         BitMatrix(bm)
     }
 
@@ -35,7 +35,7 @@ impl BitMatrix {
         let mut bm: [[bool; 32]; 32] = [[false; 32]; 32];
         for i in 0..32 {
             for j in 0..32 {
-                bm[i][j] = self.0[j][i];
+                bm[(31 - i)][j] = self.0[j][(31 - i)];
             }
         }
         BitMatrix(bm)
