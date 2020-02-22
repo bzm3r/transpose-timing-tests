@@ -197,3 +197,49 @@ impl fmt::Display for Task {
         write!(f, "{}", s)
     }
 }
+
+pub fn generate_threadgroup_tasks(max_workgroup_x: u32) -> Vec<Task> {
+    let mut tasks = Vec::<Task>::new();
+
+    for n in 1..(max_workgroup_x + 1) {
+        tasks.push(Task {
+            name: format!("Vk-Threadgroup-TG={}", n*32),
+            device_name: String::new(),
+            num_bms: 4096,
+            workgroup_size: [n, 32],
+            /// Should be an odd number.
+            num_execs_gpu: 5001,
+            /// Should be an odd number.
+            num_execs_cpu: 1001,
+            kernel_type: KernelType::Threadgroup,
+            backend: BackendVariant::Vk,
+            timestamp_query_times: vec![],
+            instant_times: vec![],
+        })
+    }
+
+    tasks
+}
+
+pub fn generate_shuffle_tasks(max_workgroup_x: u32) -> Vec<Task> {
+    let mut tasks = Vec::<Task>::new();
+
+    for n in 1..(max_workgroup_x + 1) {
+        tasks.push(Task {
+            name: String::from(format!("Vk-ShuffleAMD-WG={}", n*64)),
+            device_name: String::new(),
+            num_bms: 4096,
+            workgroup_size: [n*64, 1],
+            /// Should be an odd number.
+            num_execs_gpu: 5001,
+            /// Should be an odd number.
+            num_execs_cpu: 1001,
+            kernel_type: KernelType::Shuffle,
+            backend: BackendVariant::Vk,
+            timestamp_query_times: vec![],
+            instant_times: vec![],
+        })
+    }
+
+    tasks
+}

@@ -26,38 +26,9 @@ fn main() {
     let dx12_instance =
         Dx12::Instance::create("dx12-back", 1).expect(&format!("could not create DX12 instance"));
 
-    let mut tasks = Vec::<Task>::new();
-    tasks.push(Task {
-        name: String::from("Vk-Shuffle-0"),
-        device_name: String::new(),
-        num_bms: 4096,
-        workgroup_size: [64, 1],
-        /// Should be an odd number.
-        num_execs_gpu: 1001,
-        /// Should be an odd number.
-        num_execs_cpu: 101,
-        kernel_type: KernelType::Shuffle,
-        backend: BackendVariant::Vk,
-        timestamp_query_times: vec![],
-        instant_times: vec![],
-    });
+    let mut test_tasks = task::generate_shuffle_tasks(32);
 
-    tasks.push(Task {
-        name: String::from("Vk-Threadgroup-0"),
-        device_name: String::new(),
-        num_bms: 4096,
-        workgroup_size: [4, 32],
-        /// Should be an odd number.
-        num_execs_gpu: 1001,
-        /// Should be an odd number.
-        num_execs_cpu: 101,
-        kernel_type: KernelType::Threadgroup,
-        backend: BackendVariant::Vk,
-        timestamp_query_times: vec![],
-        instant_times: vec![],
-    });
-
-    for task in tasks.iter_mut() {
+    for task in test_tasks.iter_mut() {
         match task.backend {
             #[cfg(feature = "vk")]
             BackendVariant::Vk => {
