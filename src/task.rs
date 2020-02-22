@@ -167,7 +167,7 @@ impl fmt::Display for Task {
         let (ts_n, ts_avg, ts_std) = self.timestamp_time_stats();
         let (its_n, its_avg, its_std) = self.instant_time_stats();
         let mut s = String::new();
-        write!(s, "\ntask name:{}\n", self.name).unwrap();
+        write!(s, "task name:{}\n", self.name).unwrap();
         write!(s, "device: {}\n", self.device_name).unwrap();
         write!(
             s,
@@ -190,7 +190,7 @@ impl fmt::Display for Task {
             .unwrap();
         write!(
             s,
-            "instant stats (N = {}): {:.2} +/- {:.2} ms",
+            "instant stats (N = {}): {:.2} +/- {:.2} ms\n",
             its_n, its_avg, its_std
         )
             .unwrap();

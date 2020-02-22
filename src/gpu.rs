@@ -75,9 +75,6 @@ fn dx12_get_timestamp_period(_physical_device_name: &str) -> Result<f32, String>
 }
 
 pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
-    #[cfg(debug_assertions)]
-    env_logger::init();
-
     let adapter = instance
         .enumerate_adapters()
         .into_iter()
@@ -192,7 +189,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             memory::Properties::CPU_VISIBLE,
             buffer::Usage::UNIFORM,
             stride,
-            1,
+            2,
         )
     };
 
@@ -218,9 +215,9 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
 
         let mapping = device.map_memory(&uniform_mem, 0..uniform_size).unwrap();
         ptr::copy_nonoverlapping(
-            vec![task.num_execs_gpu].as_ptr() as *const u8,
+            vec![task.num_bms, task.num_execs_gpu].as_ptr() as *const u8,
             mapping,
-            1 * stride as usize,
+            2 * stride as usize,
         );
         device.unmap_memory(&uniform_mem);
     }
@@ -369,11 +366,11 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                 if !(bm.transpose().identical_to(rbm)) {
                     task.delete_compiled_kernel();
-                    panic!("\nGPU result {} incorrect!\ninput: {}\nexpected:{}\ngot: {}", i, &bms[i], &bms[i].transpose(), &result_bms[i]);
+                    panic!("GPU result {} incorrect!\ninput: {}\nexpected:{}\ngot: {}", i, &bms[i], &bms[i].transpose(), &result_bms[i]);
                 }
             }
             bms = result_bms;
-            println!("\nGPU results verified!");
+            println!("GPU results verified!");
         }
 
         let ts = unsafe {

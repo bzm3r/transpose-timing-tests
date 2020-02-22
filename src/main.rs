@@ -15,6 +15,9 @@ use gpu::time_task;
 use task::{Task, BackendVariant, KernelType};
 
 fn main() {
+    #[cfg(debug_assertions)]
+    env_logger::init();
+
     #[cfg(feature = "vk")]
     let vk_instance =
         Vulkan::Instance::create("vk-back", 1).expect(&format!("could not create Vulkan instance"));
@@ -39,20 +42,20 @@ fn main() {
         instant_times: vec![],
     });
 
-    // tasks.push(Task {
-    //     name: String::from("Vk-Threadgroup-0"),
-    //     device_name: String::new(),
-    //     num_bms: 4096,
-    //     workgroup_size: [4, 32],
-    //     /// Should be an odd number.
-    //     num_execs_gpu: 1001,
-    //     /// Should be an odd number.
-    //     num_execs_cpu: 101,
-    //     kernel_type: KernelType::Threadgroup,
-    //     backend: BackendVariant::Vk,
-    //     timestamp_query_times: vec![],
-    //     instant_times: vec![],
-    // });
+    tasks.push(Task {
+        name: String::from("Vk-Threadgroup-0"),
+        device_name: String::new(),
+        num_bms: 4096,
+        workgroup_size: [4, 32],
+        /// Should be an odd number.
+        num_execs_gpu: 1001,
+        /// Should be an odd number.
+        num_execs_cpu: 101,
+        kernel_type: KernelType::Threadgroup,
+        backend: BackendVariant::Vk,
+        timestamp_query_times: vec![],
+        instant_times: vec![],
+    });
 
     for task in tasks.iter_mut() {
         match task.backend {
