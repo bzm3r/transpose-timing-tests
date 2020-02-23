@@ -8,11 +8,12 @@ layout(set = 0, binding = 0) buffer BM {
 };
 struct Uniforms
 {
+    uint num_bms;
     uint num_executions;
 };
 layout(set=0, binding = 1) uniform UniformInput
 {
-    Uniforms uniform_input;
+    Uniforms u_consts;
 };
 
 uint shuffle_round(uint dst_tid, uint a, uint b, uint m, uint s) {
@@ -34,43 +35,46 @@ const uint shifts[5] = uint[5](16, 8, 4, 2, 1);
 const uint masks[5] = uint[5](0xffff, 0xff00ff, 0xf0f0f0f, 0x33333333, 0x55555555);
 
 void main() {
-    // Recall that a workgroup's size is (N, 32, 1).
-    // gl_LocalInvocationID ranges from (0, 0, 0) to (N - 1, 32 - 1, 0) (inclusive).
-    uint local_bm_ix = gl_LocalInvocationID.x;
-    uint dst_tix = gl_LocalInvocationID.y;
-    // Is gl_GlobalInvocationID.x = gl_WorkGroupSize.x*gl_WorkGroupID.x + gl_LocalInvocationID.x?
+    // gl_GlobalInvocationID.x = gl_WorkGroupSize.x*gl_WorkGroupID.x + gl_LocalInvocationID.x?
     uint global_bm_ix = gl_GlobalInvocationID.x;
 
-    uint s;
-    uint src_tix;
-    uint src_dat;
-    uint dst_dat;
+    if (global_bm_ix < u_consts.num_bms) {
+        // Recall that a workgroup's size is (N, 32, 1).
+        // gl_LocalInvocationID ranges from (0, 0, 0) to (N - 1, 32 - 1, 0) (inclusive).
+        uint local_bm_ix = gl_LocalInvocationID.x;
+        uint dst_tix = gl_LocalInvocationID.y;
 
-    for (uint iter = 0; iter < uniform_input.num_executions; iter++) {
-        dst_dat = bms[global_bm_ix][dst_tix];
-        tg_bms[local_bm_ix][dst_tix] = dst_dat;
-        memoryBarrierShared();
-        barrier();
+        uint s;
+        uint src_tix;
+        uint src_dat;
+        uint dst_dat;
 
-
-        for (int i = 0; i < 5; i++) {
-            s = shifts[i];
-
-            src_tix = dst_tix^s;
-            src_dat = tg_bms[local_bm_ix][src_tix];
+        for (uint iter = 0; iter < u_consts.num_executions; iter++) {
+            dst_dat = bms[global_bm_ix][dst_tix];
+            tg_bms[local_bm_ix][dst_tix] = dst_dat;
             memoryBarrierShared();
             barrier();
 
-            dst_dat = shuffle_round(dst_tix, dst_dat, src_dat, masks[i], s);
 
-            // on the last iteration, we don't need to store the result back into threadgroup shared memory?
-            if (i < 4) {
-                tg_bms[local_bm_ix][dst_tix] = dst_dat;
+            for (int i = 0; i < 5; i++) {
+                s = shifts[i];
+
+                src_tix = dst_tix^s;
+                src_dat = tg_bms[local_bm_ix][src_tix];
                 memoryBarrierShared();
                 barrier();
+
+                dst_dat = shuffle_round(dst_tix, dst_dat, src_dat, masks[i], s);
+
+                // on the last iteration, we don't need to store the result back into threadgroup shared memory?
+                if (i < 4) {
+                    tg_bms[local_bm_ix][dst_tix] = dst_dat;
+                    memoryBarrierShared();
+                    barrier();
+                }
             }
         }
-    }
 
-    bms[global_bm_ix][dst_tix] = dst_dat;
+        bms[global_bm_ix][dst_tix] = dst_dat;
+    }
 }

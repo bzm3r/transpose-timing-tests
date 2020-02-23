@@ -72,9 +72,6 @@ fn dx12_get_timestamp_period(_physical_device_name: &str) -> Result<f32, String>
 }
 
 pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
-    #[cfg(debug_assertions)]
-    env_logger::init();
-
     let adapter = instance
         .enumerate_adapters()
         .into_iter()
@@ -107,7 +104,8 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     #[cfg(feature = "metal")]
     let ts_grain = 1.0; // TODO
 
-    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_corner()).collect();
+    //let test_bm: [u32; 32] = [305416560, 1229584932, 2756536303, 4060742777, 4182705392, 2186331296, 2135740396, 2054503818, 967523107, 1193470501, 4085384340, 4267063270, 3256387385, 1292916830, 2745807480, 2891425733, 2732819558, 2218219662, 2447098721, 973566348, 3928452117, 129779629, 576160859, 1223581544, 2599797927, 3616619526, 3200710431, 2975536349, 758187906, 3931020116, 2744172146, 3574783686];
+    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_random()).collect();
     let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
     let mut flat_raw_bms: Vec<u32> = Vec::new();
     for raw_bm in raw_bms.iter() {
@@ -190,7 +188,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             memory::Properties::CPU_VISIBLE,
             buffer::Usage::UNIFORM,
             stride,
-            1,
+            2,
         )
     };
 
@@ -216,9 +214,9 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
 
         let mapping = device.map_memory(&uniform_mem, 0..uniform_size).unwrap();
         ptr::copy_nonoverlapping(
-            vec![task.num_execs_gpu].as_ptr() as *const u8,
+            vec![task.num_bms, task.num_execs_gpu].as_ptr() as *const u8,
             mapping,
-            1 * stride as usize,
+            2 * stride as usize,
         );
         device.unmap_memory(&uniform_mem);
     }
@@ -257,8 +255,15 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     let query_pool = unsafe { device.create_query_pool(query::Type::Timestamp, 2).ok() };
     let fence = device.create_fence(false).unwrap();
 
-    assert_eq!(task.num_bms % task.workgroup_size[0], 0);
-    let num_dispatch_groups = task.num_bms / task.workgroup_size[0];
+    let num_dispatch_groups = match task.kernel_type {
+        KernelType::Threadgroup => {
+            (task.num_bms + task.workgroup_size[0] - 1)/task.workgroup_size[0]
+        },
+        _ => {
+            task.num_bms/(task.workgroup_size[0] / 32)
+        }
+    };
+
     for i in 0..task.num_execs_cpu {
         unsafe {
             let mut cmd_buf = cmd_pool.allocate_one(command::Level::Primary);
@@ -366,17 +371,11 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                 if !(bm.transpose().identical_to(rbm)) {
                     task.delete_compiled_kernel();
-                    panic!(
-                        "\nGPU result {} incorrect!\ninput: {}\nexpected:{}\ngot: {}",
-                        i,
-                        &bms[i],
-                        &bms[i].transpose(),
-                        &result_bms[i]
-                    );
+                    panic!("GPU result {} incorrect!\ninput: {}\nexpected:{}\ngot: {}", i, &bms[i], &bms[i].transpose(), &result_bms[i]);
                 }
             }
             bms = result_bms;
-            println!("\nGPU results verified!");
+            println!("GPU results verified!");
         }
 
         let ts = unsafe {
@@ -403,10 +402,12 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
         device.destroy_shader_module(kmod);
         device.destroy_buffer(device_buf);
         device.destroy_buffer(staging_buf);
+        device.destroy_buffer(uniform_buf);
         device.destroy_fence(fence);
         device.destroy_pipeline_layout(pipeline_layout);
         device.free_memory(device_mem);
         device.free_memory(staging_mem);
+        device.free_memory(uniform_mem);
         device.destroy_compute_pipeline(pipeline);
     }
 }

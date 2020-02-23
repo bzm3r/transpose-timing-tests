@@ -18,6 +18,9 @@ use gpu::time_task;
 use task::{Task, BackendVariant, KernelType};
 
 fn main() {
+    #[cfg(debug_assertions)]
+    env_logger::init();
+
     #[cfg(feature = "vk")]
     let vk_instance =
         Vulkan::Instance::create("vk-back", 1).expect(&format!("could not create Vulkan instance"));
@@ -27,40 +30,12 @@ fn main() {
         Dx12::Instance::create("dx12-back", 1).expect(&format!("could not create DX12 instance"));
 
     #[cfg(feature = "metal")]
-    let metal_instance = gfx_backend_metal::Instance::create("metal-back", 1)
-        .expect("could not create Metal instance");
+    let metal_instance =
+        gfx_backend_metal::Instance::create("metal-back", 1).expect(&format!("could not create Metal instance"));
 
-    let mut tasks = Vec::<Task>::new();
-    tasks.push(Task {
-        name: String::from("Vk-Shuffle-0"),
-        device_name: String::new(),
-        num_bms: 4096,
-        workgroup_size: [32, 1],
-        /// Should be an odd number.
-        num_execs_gpu: 1001,
-        /// Should be an odd number.
-        num_execs_cpu: 101,
-        kernel_type: KernelType::Threadgroup,
-        backend: BackendVariant::Metal,
-        timestamp_query_times: vec![],
-        instant_times: vec![],
-    });
-    // tasks.push(Task {
-    //     name: String::from("Vk-Threadgroup-0"),
-    //     device_name: String::new(),
-    //     num_bms: 4096,
-    //     workgroup_size: [4, 32],
-    //     /// Should be an odd number.
-    //     num_execs_gpu: 1001,
-    //     /// Should be an odd number.
-    //     num_execs_cpu: 101,
-    //     kernel_type: KernelType::Threadgroup,
-    //     backend: BackendVariant::Vk,
-    //     timestamp_query_times: vec![],
-    //     instant_times: vec![],
-    // });
+    let mut test_tasks = task::generate_threadgroup_tasks(32);
 
-    for task in tasks.iter_mut() {
+    for task in test_tasks.iter_mut() {
         match task.backend {
             #[cfg(feature = "vk")]
             BackendVariant::Vk => {
