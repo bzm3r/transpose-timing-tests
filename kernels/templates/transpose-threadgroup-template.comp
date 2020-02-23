@@ -47,31 +47,20 @@ void main() {
         uint s;
         uint src_tix;
         uint src_dat;
-        uint dst_dat;
+        uint dst_dat = bms[global_bm_ix][dst_tix];
 
         for (uint iter = 0; iter < u_consts.num_executions; iter++) {
-            dst_dat = bms[global_bm_ix][dst_tix];
-            tg_bms[local_bm_ix][dst_tix] = dst_dat;
-            memoryBarrierShared();
-            barrier();
-
-
             for (int i = 0; i < 5; i++) {
+                tg_bms[local_bm_ix][dst_tix] = dst_dat;
+                barrier();
+
                 s = shifts[i];
 
                 src_tix = dst_tix^s;
                 src_dat = tg_bms[local_bm_ix][src_tix];
-                memoryBarrierShared();
                 barrier();
 
                 dst_dat = shuffle_round(dst_tix, dst_dat, src_dat, masks[i], s);
-
-                // on the last iteration, we don't need to store the result back into threadgroup shared memory?
-                if (i < 4) {
-                    tg_bms[local_bm_ix][dst_tix] = dst_dat;
-                    memoryBarrierShared();
-                    barrier();
-                }
             }
         }
 

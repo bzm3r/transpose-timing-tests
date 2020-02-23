@@ -33,7 +33,7 @@ fn main() {
     let metal_instance =
         gfx_backend_metal::Instance::create("metal-back", 1).expect(&format!("could not create Metal instance"));
 
-    let mut test_tasks = task::generate_threadgroup_tasks(32);
+    let mut test_tasks = task::generate_threadgroup_tasks(101, 1001);
 
     for task in test_tasks.iter_mut() {
         match task.backend {

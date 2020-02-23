@@ -105,7 +105,7 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
     let ts_grain = 1.0; // TODO
 
     //let test_bm: [u32; 32] = [305416560, 1229584932, 2756536303, 4060742777, 4182705392, 2186331296, 2135740396, 2054503818, 967523107, 1193470501, 4085384340, 4267063270, 3256387385, 1292916830, 2745807480, 2891425733, 2732819558, 2218219662, 2447098721, 973566348, 3928452117, 129779629, 576160859, 1223581544, 2599797927, 3616619526, 3200710431, 2975536349, 758187906, 3931020116, 2744172146, 3574783686];
-    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|_| BitMatrix::new_random()).collect();
+    let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|i| BitMatrix::new_random()).collect();
     let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
     let mut flat_raw_bms: Vec<u32> = Vec::new();
     for raw_bm in raw_bms.iter() {
@@ -260,10 +260,11 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
             (task.num_bms + task.workgroup_size[0] - 1)/task.workgroup_size[0]
         },
         _ => {
-            task.num_bms/(task.workgroup_size[0] / 32)
+            let num_mats_per_wg = (task.workgroup_size[0] / 32);
+            (task.num_bms + num_mats_per_wg - 1)/num_mats_per_wg
         }
     };
-
+    println!("num bms: {}, num dispatch groups: {}", task.num_bms, num_dispatch_groups);
     for i in 0..task.num_execs_cpu {
         unsafe {
             let mut cmd_buf = cmd_pool.allocate_one(command::Level::Primary);
@@ -367,6 +368,10 @@ pub fn time_task<B: hal::Backend>(instance: &B::Instance, task: &mut Task) {
                         .expect("could not construct BitMatrix from u32 slice")
                 })
                 .collect();
+
+            // for i in 0..4 {
+            //     println!("rbm {}: {}", i, &result_bms[i]);
+            // }
 
             for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                 if !(bm.transpose().identical_to(rbm)) {

@@ -31,6 +31,11 @@ impl BitMatrix {
         BitMatrix(bm)
     }
 
+    pub fn new_constant(c: u32) -> BitMatrix {
+        let ibm = [c; 32];
+        BitMatrix::from_u32s(&ibm).unwrap()
+    }
+
     pub fn transpose(&self) -> BitMatrix {
         let mut bm: [[bool; 32]; 32] = [[false; 32]; 32];
         for i in 0..32 {
