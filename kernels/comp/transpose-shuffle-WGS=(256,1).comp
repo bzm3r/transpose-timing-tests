@@ -1,7 +1,7 @@
 #version 450
 #extension GL_KHR_shader_subgroup_shuffle: enable
 
-#define WORKGROUP_SIZE ~WG_SIZE~
+#define WORKGROUP_SIZE 256
 
 // Unlike the threadgroup case, the Y-dimension of the workgroup size is not used.
 // This is because the Y-dimension will be implicit in the number of subgroups in a workgroup.
