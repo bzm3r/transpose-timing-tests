@@ -10,6 +10,7 @@ edition = "2018"
 default = ["gfx-backend-dx12", "gfx-backend-vulkan"]
 dx12 = ["gfx-backend-dx12"]
 vk = ["gfx-backend-vulkan"]
+metal = ["gfx-backend-metal"]
 
 [dependencies]
 log = "0.4"
@@ -29,3 +30,8 @@ git = "https://github.com/bzm3r/gfx.git"
 rev = "4921b4e1"
 optional = true
 features = ["x11"]
+
+[dependencies.gfx-backend-metal]
+git = "https://github.com/bzm3r/gfx.git"
+rev = "4921b4e1"
+optional = true
