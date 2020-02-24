@@ -18,6 +18,7 @@ gfx-hal = { git = "https://github.com/bzm3r/gfx.git", rev = "4921b4e1"}
 shaderc = "0.6.1"
 rand = "0.7.3"
 env_logger = "0.6"
+csv = "1.1"
 
 [dependencies.gfx-backend-dx12]
 git = "https://github.com/bzm3r/gfx.git"

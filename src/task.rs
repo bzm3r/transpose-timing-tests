@@ -23,40 +23,13 @@ impl fmt::Display for KernelType {
 }
 
 #[derive(Clone)]
-pub enum BackendVariant {
-    #[cfg(feature = "vk")]
-    Vk,
-    #[cfg(feature = "dx12")]
-    Dx12,
-    #[cfg(feature = "metal")]
-    Metal,
-}
-
-impl fmt::Display for BackendVariant {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            #[cfg(feature = "vk")]
-            BackendVariant::Vk => write!(f, "{}", "vk"),
-            #[cfg(feature = "dx12")]
-            BackendVariant::Dx12 => write!(f, "{}", "dx12"),
-            #[cfg(feature = "metal")]
-            BackendVariant::Metal => write!(f, "{}", "metal"),
-        }
-    }
-}
-
-#[derive(Clone)]
 pub struct Task {
     pub name: String,
-    pub device_name: String,
-    pub num_bms: u32,
     pub workgroup_size: [u32; 2],
-    pub num_execs_gpu: u32,
-    pub num_execs_cpu: u32,
-    pub kernel_type: KernelType,
-    pub backend: BackendVariant,
     pub instant_times: Vec<f64>,
     pub timestamp_query_times: Vec<f64>,
+    pub kernel_name: String,
+    pub kernel_type: KernelType,
 }
 
 impl Task {
@@ -86,15 +59,14 @@ impl Task {
     }
 
     pub fn compile_kernel(&self) -> std::fs::File {
-        let kernel_name = self.kernel_name();
-        let kernel_fp = format!("kernels/spv/{}.spv", &kernel_name);
+        let kernel_fp = format!("kernels/spv/{}.spv", self.kernel_name);
         match OpenOptions::new().read(true).open(&kernel_fp) {
             Ok(f) => {
-                println!("{} kernel already compiled...", &kernel_name);
+                println!("{} kernel already compiled...", self.kernel_name);
                 f
             }
             Err(_) => {
-                println!("compiling kernel {}...", &kernel_name);
+                println!("compiling kernel {}...", self.kernel_name);
                 let glsl = self.materialize_kernel();
                 let mut compiler = shaderc::Compiler::new().unwrap();
                 let mut options = shaderc::CompileOptions::new().unwrap();
@@ -106,7 +78,7 @@ impl Task {
                     .compile_into_spirv(
                         &glsl,
                         shaderc::ShaderKind::Compute,
-                        &format!("{}.glsl", kernel_name),
+                        &format!("{}.glsl", self.kernel_name),
                         "main",
                         Some(&options),
                     )
@@ -126,9 +98,12 @@ impl Task {
     }
 
     pub fn materialize_kernel(&self) -> String {
-        let tp = format!("kernels/templates/transpose-{}-template.comp", self.kernel_type);
-        let mut kernel =
-            std::fs::read_to_string(&tp).expect(&format!("could not kernel template at path: {}", &tp));
+        let tp = format!(
+            "kernels/templates/transpose-{}-template.comp",
+            self.kernel_type
+        );
+        let mut kernel = std::fs::read_to_string(&tp)
+            .expect(&format!("could not kernel template at path: {}", &tp));
 
         match self.kernel_type {
             KernelType::Threadgroup => {
@@ -143,20 +118,13 @@ impl Task {
         }
 
         #[cfg(debug_assertions)]
-            std::fs::write(format!("kernels/comp/{}.comp", &self.kernel_name()), &kernel).unwrap();
+        std::fs::write(format!("kernels/comp/{}.comp", self.kernel_name), &kernel).unwrap();
 
         kernel
     }
 
-    pub fn kernel_name(&self) -> String {
-        format!(
-            "transpose-{}-WGS=({},{})",
-            self.kernel_type, self.workgroup_size[0], self.workgroup_size[1]
-        )
-    }
-
     pub fn delete_compiled_kernel(&self) {
-        let kp = format!("kernels/spv/{}.spv", self.kernel_name());
+        let kp = format!("kernels/spv/{}.spv", self.kernel_name);
         match std::fs::read(&kp) {
             Ok(_) => {
                 std::fs::remove_file(&kp).expect("could not delete compiled kernel");
@@ -172,18 +140,10 @@ impl fmt::Display for Task {
         let (its_n, its_avg, its_std) = self.instant_time_stats();
         let mut s = String::new();
         write!(s, "task name:{}\n", self.name).unwrap();
-        write!(s, "device: {}\n", self.device_name).unwrap();
         write!(
             s,
-            "num BMs: {}, TG size: {}\n",
-            self.num_bms,
+            "TG size: {}\n",
             self.workgroup_size[0] * self.workgroup_size[1]
-        )
-        .unwrap();
-        write!(
-            s,
-            "CPU loops: {}, GPU loops: {}\n",
-            self.num_execs_cpu, self.num_execs_gpu
         )
         .unwrap();
         write!(
@@ -202,94 +162,34 @@ impl fmt::Display for Task {
     }
 }
 
-pub fn generate_threadgroup_tasks(num_execs_cpu: u32, num_execs_gpu: u32) -> Vec<Task> {
-    let mut tasks = Vec::<Task>::new();
+#[derive(Clone, Copy)]
+pub struct NumCpuExecs(pub u32);
+#[derive(Clone, Copy)]
+pub struct NumGpuExecs(pub u32);
+#[derive(Clone, Copy)]
+pub struct SubgroupSizeLog2(pub u32);
 
-    for n in 0u32..8 {
-        tasks.push(Task {
-            name: format!("Vk-Threadgroup-TG={}", 2u32.pow(n)*32),
-            device_name: String::new(),
-            num_bms: 4096,
-            workgroup_size: [2u32.pow(n), 32],
-            /// Should be an odd number.
-            num_execs_gpu,
-            /// Should be an odd number.
-            num_execs_cpu,
-            kernel_type: KernelType::Threadgroup,
-            backend: BackendVariant::Metal,
-            timestamp_query_times: vec![],
-            instant_times: vec![],
-        })
-    }
-
-    tasks
+pub enum TaskGroupDefn {
+    Threadgroup(NumCpuExecs, NumGpuExecs),
+    Shuffle(NumCpuExecs, NumGpuExecs, SubgroupSizeLog2),
+    HybridShuffle(NumCpuExecs, NumGpuExecs),
 }
 
-pub fn generate_64multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32) -> Vec<Task> {
-    let mut tasks = Vec::<Task>::new();
-
-    for n in 6u32..11 {
-        tasks.push(Task {
-            name: String::from(format!("Vk-ShuffleAMD-WG={}", 2u32.pow(n))),
-            device_name: String::new(),
-            num_bms: 4096,
-            workgroup_size: [2u32.pow(n), 1],
-            /// Should be an odd number.
-            num_execs_gpu,
-            /// Should be an odd number.
-            num_execs_cpu,
-            kernel_type: KernelType::Shuffle,
-            backend: BackendVariant::Metal,
-            timestamp_query_times: vec![],
-            instant_times: vec![],
-        })
-    }
-
-    tasks
+pub struct TaskGroup {
+    pub name: String,
+    pub num_bms: u32,
+    pub num_gpu_execs: NumGpuExecs,
+    pub num_cpu_execs: NumCpuExecs,
+    pub kernel_type: KernelType,
+    pub tasks: Vec<Task>,
 }
 
-pub fn generate_32multiplier_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32, max_workgroup_x: u32) -> Vec<Task> {
-    let mut tasks = Vec::<Task>::new();
-
-    for n in 5u32..11 {
-        tasks.push(Task {
-            name: String::from(format!("Vk-Shuffle32-WG={}", 2u32.pow(n))),
-            device_name: String::new(),
-            num_bms: 4096,
-            workgroup_size: [2u32.pow(n), 1],
-            /// Should be an odd number.
-            num_execs_gpu,
-            /// Should be an odd number.
-            num_execs_cpu,
-            kernel_type: KernelType::Shuffle,
-            backend: BackendVariant::Metal,
-            timestamp_query_times: vec![],
-            instant_times: vec![],
-        })
+impl fmt::Display for TaskGroup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}\nkernel type: {}\ncpu_execs: {}, gpu_execs: {}",
+            self.name, self.kernel_type, self.num_cpu_execs.0, self.num_gpu_execs.0
+        )
     }
-
-    tasks
-}
-
-pub fn generate_hybrid_shuffle_tasks(num_execs_cpu: u32, num_execs_gpu: u32) -> Vec<Task> {
-    let mut tasks = Vec::<Task>::new();
-
-    for n in 5u32..10 {
-        tasks.push(Task {
-            name: format!("Vk-HybridShuffle-TG={}", 2u32.pow(n)),
-            device_name: String::new(),
-            num_bms: 4096,
-            workgroup_size: [2u32.pow(n), 1],
-            /// Should be an odd number.
-            num_execs_gpu,
-            /// Should be an odd number.
-            num_execs_cpu,
-            kernel_type: KernelType::HybridShuffle,
-            backend: BackendVariant::Metal,
-            timestamp_query_times: vec![],
-            instant_times: vec![],
-        })
-    }
-
-    tasks
 }
