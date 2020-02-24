@@ -1,6 +1,6 @@
 /target
 **/*.rs.bk
 .idea
-kernels/comp/*.comp
-kernels/spv/*.spv
+*.comp
+*.spv
 plots/*.png
