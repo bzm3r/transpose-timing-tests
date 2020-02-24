@@ -17,7 +17,7 @@ impl fmt::Display for KernelType {
             KernelType::Threadgroup => write!(f, "{}", "threadgroup"),
             KernelType::Ballot => write!(f, "{}", "ballot"),
             KernelType::Shuffle => write!(f, "{}", "shuffle"),
-            KernelType::HybridShuffle => write!(f, "{}", "hybrid-shuffle"),
+            KernelType::HybridShuffle => write!(f, "{}", "hybrid shuffle"),
         }
     }
 }
