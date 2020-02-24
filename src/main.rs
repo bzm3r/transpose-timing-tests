@@ -14,7 +14,7 @@ mod gpu;
 mod task;
 
 use gpu::GpuTestEnv;
-use task::{TaskGroupDefn, NumCpuExecs, NumGpuExecs, SubgroupSizeLog2};
+use task::{NumCpuExecs, NumGpuExecs, SubgroupSizeLog2, TaskGroupDefn};
 
 fn main() {
     #[cfg(debug_assertions)]
@@ -23,11 +23,18 @@ fn main() {
     #[cfg(feature = "vk")]
     {
         let mut test_env = GpuTestEnv::<Vulkan::Backend>::vulkan();
-        test_env.set_task_group(TaskGroupDefn::Threadgroup(NumCpuExecs(101), NumGpuExecs(5001)));
+        test_env.set_task_group(TaskGroupDefn::Threadgroup(
+            NumCpuExecs(101),
+            NumGpuExecs(5001),
+        ));
         test_env.time_task_group();
         test_env.save_results();
 
-        test_env.set_task_group(TaskGroupDefn::Shuffle(NumCpuExecs(101), NumGpuExecs(5001), SubgroupSizeLog2(6)));
+        test_env.set_task_group(TaskGroupDefn::Shuffle(
+            NumCpuExecs(101),
+            NumGpuExecs(5001),
+            SubgroupSizeLog2(6),
+        ));
         test_env.time_task_group();
         test_env.save_results();
     }
@@ -35,11 +42,17 @@ fn main() {
     #[cfg(feature = "metal")]
     {
         let mut test_env = GpuTestEnv::<gfx_backend_metal::Backend>::metal();
-        test_env.set_task_group(TaskGroupDefn::Threadgroup(NumCpuExecs(101), NumGpuExecs(5001)));
+        test_env.set_task_group(TaskGroupDefn::Threadgroup(
+            NumCpuExecs(2),
+            NumGpuExecs(5001),
+        ));
         test_env.time_task_group();
         test_env.save_results();
 
-        test_env.set_task_group(TaskGroupDefn::Shuffle(NumCpuExecs(101), NumGpuExecs(5001), SubgroupSizeLog2(6)));
+        test_env.set_task_group(TaskGroupDefn::HybridShuffle(
+            NumCpuExecs(2),
+            NumGpuExecs(5001),
+        ));
         test_env.time_task_group();
         test_env.save_results();
     }
