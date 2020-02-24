@@ -20,11 +20,11 @@ fn main() {
     #[cfg(feature = "vk")]
     {
         let mut test_env = GpuTestEnv::<Vulkan::Backend>::vulkan();
-        test_env.set_task_group(TaskGroupDefn::Threadgroup(NumCpuExecs(101), NumGpuExecs(5001)));
+        test_env.set_task_group(TaskGroupDefn::Threadgroup(NumCpuExecs(101), NumGpuExecs(1001)));
         test_env.time_task_group();
         test_env.save_results();
 
-        test_env.set_task_group(TaskGroupDefn::Shuffle(NumCpuExecs(101), NumGpuExecs(5001), SubgroupSizeLog2(6)));
+        test_env.set_task_group(TaskGroupDefn::HybridShuffle(NumCpuExecs(101), NumGpuExecs(1001)));
         test_env.time_task_group();
         test_env.save_results();
     }
