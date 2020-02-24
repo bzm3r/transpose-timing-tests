@@ -597,7 +597,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     tasks: {
                         let mut tasks = Vec::<Task>::new();
 
-                        for n in 5u32..10 {
+                        for n in 5u32..11 {
                             let num_threads = 2u32.pow(n);
                             tasks.push(Task {
                                 name: format!("{}-WGS=({},{})", &task_group_prefix, num_threads, 1),

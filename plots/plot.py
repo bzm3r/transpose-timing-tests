@@ -39,14 +39,14 @@ class TimingResults:
 
 timing_results = [TimingResults(dir, f) for f in dat_files]
 
-plt.rcParams.update({'font.size': 22})
+plt.rcParams.update({'font.size': 16})
 fig, ax = plt.subplots()
 
 for tr in timing_results:
     ps = sorted([[wgsize[0]*wgsize[1], np.average(tr.data[wgsize]), np.std(tr.data[wgsize])] for wgsize in tr.data.keys()], key=lambda p: p[0])
     ax.errorbar([p[0] for p in ps], [p[1] for p in ps], yerr=[p[2] for p in ps], label="{}, {}, {}".format(tr.device_name, tr.backend, tr.kernel_type), marker=".", capsize=5, markersize=10)
 
-ax.set_xticks([2**n for n in range(5, 6)] + [2**n for n in range(7, 11)])
-#ax.legend(bbox_to_anchor=(1.2, 0.5))
+ax.set_xticks([2**n for n in range(5, 11)])
 ax.legend(loc="best")
+fig.set_size_inches(11, 8.5)
 fig.savefig(os.path.join(dir, "plot.png"))
