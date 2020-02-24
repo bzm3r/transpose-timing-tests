@@ -4,12 +4,17 @@ extern crate gfx_backend_vulkan as Vulkan;
 #[cfg(feature = "dx12")]
 extern crate gfx_backend_dx12 as Dx12;
 
+#[cfg(feature = "metal")]
+extern crate gfx_backend_metal;
+
 extern crate csv;
 extern crate gfx_hal as hal;
 extern crate shaderc;
 
 use crate::bitmats::BitMatrix;
-use crate::task::{KernelType, Task, TaskGroup, TaskGroupDefn, NumCpuExecs, NumGpuExecs, SubgroupSizeLog2};
+use crate::task::{
+    KernelType, NumCpuExecs, NumGpuExecs, SubgroupSizeLog2, Task, TaskGroup, TaskGroupDefn,
+};
 use hal::{
     adapter::{Adapter, MemoryProperties, MemoryType},
     buffer, command, memory, pool,
@@ -29,6 +34,8 @@ pub enum BackendVariant {
     Vk,
     #[cfg(feature = "dx12")]
     Dx12,
+    #[cfg(feature = "metal")]
+    Metal,
 }
 
 impl fmt::Display for BackendVariant {
@@ -38,6 +45,8 @@ impl fmt::Display for BackendVariant {
             BackendVariant::Vk => write!(f, "{}", "vk"),
             #[cfg(feature = "dx12")]
             BackendVariant::Dx12 => write!(f, "{}", "dx12"),
+            #[cfg(feature = "metal")]
+            BackendVariant::Metal => write!(f, "{}", "metal"),
         }
     }
 }
@@ -106,7 +115,13 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         (memory, buffer, requirements.size)
     }
 
-    pub fn time_task(&self, num_bms: u32, num_cpu_execs: NumCpuExecs, num_gpu_execs: NumGpuExecs, task: &mut Task) {
+    pub fn time_task(
+        &self,
+        num_bms: u32,
+        num_cpu_execs: NumCpuExecs,
+        num_gpu_execs: NumGpuExecs,
+        task: &mut Task,
+    ) {
         // we pray that this adapter's graphics/compute queues also support timestamp queries
         let family = self
             .adapter
@@ -269,7 +284,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
             device.create_command_pool(family.id(), pool::CommandPoolCreateFlags::empty())
         }
         .expect("Can't create command pool");
-        let query_pool = unsafe { device.create_query_pool(query::Type::Timestamp, 2).unwrap() };
+        let query_pool = unsafe { device.create_query_pool(query::Type::Timestamp, 2).ok() };
         let fence = device.create_fence(false).unwrap();
 
         let kernel_type = &task.kernel_type;
@@ -290,7 +305,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
             unsafe {
                 let mut cmd_buf = cmd_pool.allocate_one(command::Level::Primary);
                 cmd_buf.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
-                cmd_buf.reset_query_pool(&query_pool, 0..2);
+                if let Some(query_pool) = query_pool.as_ref() {
+                    cmd_buf.reset_query_pool(&query_pool, 0..2);
+                }
                 cmd_buf.copy_buffer(
                     &staging_buf,
                     &device_buf,
@@ -318,21 +335,25 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     [&desc_set].iter().cloned(),
                     &[],
                 );
-                cmd_buf.write_timestamp(
-                    pso::PipelineStage::COMPUTE_SHADER,
-                    query::Query {
-                        pool: &query_pool,
-                        id: 0,
-                    },
-                );
+                if let Some(query_pool) = query_pool.as_ref() {
+                    cmd_buf.write_timestamp(
+                        pso::PipelineStage::COMPUTE_SHADER,
+                        query::Query {
+                            pool: &query_pool,
+                            id: 0,
+                        },
+                    );
+                }
                 cmd_buf.dispatch([num_dispatch_groups as u32, 1, 1]);
-                cmd_buf.write_timestamp(
-                    pso::PipelineStage::COMPUTE_SHADER,
-                    query::Query {
-                        pool: &query_pool,
-                        id: 1,
-                    },
-                );
+                if let Some(query_pool) = query_pool.as_ref() {
+                    cmd_buf.write_timestamp(
+                        pso::PipelineStage::COMPUTE_SHADER,
+                        query::Query {
+                            pool: &query_pool,
+                            id: 1,
+                        },
+                    );
+                }
                 cmd_buf.pipeline_barrier(
                     pso::PipelineStage::COMPUTE_SHADER..pso::PipelineStage::TRANSFER,
                     memory::Dependencies::empty(),
@@ -405,19 +426,29 @@ impl<B: hal::Backend> GpuTestEnv<B> {
             }
 
             let ts = unsafe {
-                let mut ts = vec![0u32; 2];
-                let raw_t = slice::from_raw_parts_mut(ts.as_mut_ptr() as *mut u8, 4 * 2);
-                device
-                    .get_query_pool_results(&query_pool, 0..2, raw_t, 4, query::ResultFlags::WAIT)
-                    .unwrap();
-                ts
+                    let mut ts = vec![0u32; 2];
+                    if let Some(query_pool) = query_pool.as_ref() {
+                        let raw_t = slice::from_raw_parts_mut(ts.as_mut_ptr() as *mut u8, 4 * 2);
+                    device
+                        .get_query_pool_results(
+                            &query_pool,
+                            0..2,
+                            raw_t,
+                            4,
+                            query::ResultFlags::WAIT,
+                        )
+                        .unwrap();
+                    }
+                    ts
             };
             task.timestamp_query_times
                 .push((ts[1].wrapping_sub(ts[0])) as f64 * self.ts_grain);
         }
 
         unsafe {
-            device.destroy_query_pool(query_pool);
+            if let Some(query_pool) = query_pool {
+                device.destroy_query_pool(query_pool);
+            }
             device.destroy_command_pool(cmd_pool);
             device.destroy_descriptor_pool(desc_pool);
             device.destroy_descriptor_set_layout(set_layout);
@@ -461,6 +492,24 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let ts_grain = dx12_get_timestamp_period(&device_name).unwrap();
         GpuTestEnv {
             backend: BackendVariant::Vk,
+            instance,
+            device_name,
+            adapter,
+            memory_properties,
+            ts_grain,
+            task_group: None,
+        }
+    }
+
+    #[cfg(feature = "metal")]
+    pub fn metal() -> GpuTestEnv<gfx_backend_metal::Backend> {
+        let instance = gfx_backend_metal::Instance::create("metal-back", 1)
+            .expect(&format!("could not create Metal instance"));
+
+        let (device_name, memory_properties, adapter) = GpuTestEnv::load(&instance);
+        let ts_grain = 1.0;
+        GpuTestEnv {
+            backend: BackendVariant::Metal,
             instance,
             device_name,
             adapter,
@@ -580,8 +629,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let timed_tasks = match self.task_group.as_ref() {
             Some(tg) => {
                 println!("{}", tg);
-                tg
-                    .tasks
+                tg.tasks
                     .iter()
                     .map(|t| {
                         let mut nt = t.clone();
@@ -619,7 +667,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                 &task
                                     .timestamp_query_times
                                     .iter()
-                                    .map(|&t|  (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3))
+                                    .map(|&t| {
+                                        (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3)
+                                    })
                                     .collect::<Vec<f64>>(),
                             ))
                             .unwrap();
@@ -627,7 +677,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                 &task
                                     .instant_times
                                     .iter()
-                                    .map(|&t| (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3))
+                                    .map(|&t| {
+                                        (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3)
+                                    })
                                     .collect::<Vec<f64>>(),
                             ))
                             .unwrap();
@@ -649,7 +701,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                 &task
                                     .timestamp_query_times
                                     .iter()
-                                    .map(|&t| (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3))
+                                    .map(|&t| {
+                                        (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3)
+                                    })
                                     .collect::<Vec<f64>>(),
                             ))
                             .unwrap();
@@ -657,7 +711,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                 &task
                                     .instant_times
                                     .iter()
-                                    .map(|&t| (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3))
+                                    .map(|&t| {
+                                        (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3)
+                                    })
                                     .collect::<Vec<f64>>(),
                             ))
                             .unwrap();
