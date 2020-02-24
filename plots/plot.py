@@ -47,6 +47,7 @@ for tr in timing_results:
     ax.errorbar([p[0] for p in ps], [p[1] for p in ps], yerr=[p[2] for p in ps], label="{}, {}, {}".format(tr.device_name, tr.backend, tr.kernel_type), marker=".", capsize=5, markersize=10)
 
 ax.set_xticks([2**n for n in range(5, 6)] + [2**n for n in range(7, 11)])
-ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.2))
-fig.set_size_inches(11, 8.5)
+ax.legend(bbox_to_anchor=(1.2, 0.5))
+#ax.legend(loc="best")
+fig.set_size_inches(11, 11)
 fig.savefig(os.path.join(dir, "plot.png"))
