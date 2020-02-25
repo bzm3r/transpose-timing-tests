@@ -25,6 +25,7 @@ impl fmt::Display for KernelType {
 #[derive(Clone)]
 pub struct Task {
     pub name: String,
+    pub num_bms: u32,
     pub workgroup_size: [u32; 2],
     pub instant_times: Vec<f64>,
     pub timestamp_query_times: Vec<f64>,
@@ -177,7 +178,6 @@ pub enum TaskGroupDefn {
 
 pub struct TaskGroup {
     pub name: String,
-    pub num_bms: u32,
     pub num_gpu_execs: NumGpuExecs,
     pub num_cpu_execs: NumCpuExecs,
     pub kernel_type: KernelType,

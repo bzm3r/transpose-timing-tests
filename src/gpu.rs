@@ -5,7 +5,7 @@ extern crate gfx_backend_vulkan as Vulkan;
 extern crate gfx_backend_dx12 as Dx12;
 
 #[cfg(feature = "metal")]
-extern crate gfx_backend_metal;
+extern crate gfx_backend_metal as Metal;
 
 extern crate csv;
 extern crate gfx_hal as hal;
@@ -117,7 +117,6 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
     pub fn time_task(
         &self,
-        num_bms: u32,
         num_cpu_execs: NumCpuExecs,
         num_gpu_execs: NumGpuExecs,
         task: &mut Task,
@@ -139,7 +138,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let queue_group = gpu.queue_groups.first_mut().unwrap();
 
         //let test_bm: [u32; 32] = [305416560, 1229584932, 2756536303, 4060742777, 4182705392, 2186331296, 2135740396, 2054503818, 967523107, 1193470501, 4085384340, 4267063270, 3256387385, 1292916830, 2745807480, 2891425733, 2732819558, 2218219662, 2447098721, 973566348, 3928452117, 129779629, 576160859, 1223581544, 2599797927, 3616619526, 3200710431, 2975536349, 758187906, 3931020116, 2744172146, 3574783686];
-        let mut bms: Vec<BitMatrix> = (0..num_bms).map(|i| BitMatrix::new_random()).collect();
+        let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|i| BitMatrix::new_random()).collect();
         let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
         let mut flat_raw_bms: Vec<u32> = Vec::new();
         for raw_bm in raw_bms.iter() {
@@ -245,7 +244,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
             let mapping = device.map_memory(&uniform_mem, 0..uniform_size).unwrap();
             ptr::copy_nonoverlapping(
-                vec![num_bms, num_gpu_execs.0].as_ptr() as *const u8,
+                vec![task.num_bms, num_gpu_execs.0].as_ptr() as *const u8,
                 mapping,
                 2 * stride as usize,
             );
@@ -290,16 +289,16 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let kernel_type = &task.kernel_type;
         let num_dispatch_groups = match kernel_type {
             KernelType::Threadgroup => {
-                (num_bms + task.workgroup_size[0] - 1) / task.workgroup_size[0]
+                (task.num_bms + task.workgroup_size[0] - 1) / task.workgroup_size[0]
             }
             _ => {
                 let num_mats_per_wg = task.workgroup_size[0] / 32;
-                (num_bms + num_mats_per_wg - 1) / num_mats_per_wg
+                (task.num_bms + num_mats_per_wg - 1) / num_mats_per_wg
             }
         };
         println!(
             "num bms: {}, num dispatch groups: {}",
-            num_bms, num_dispatch_groups
+            task.num_bms, num_dispatch_groups
         );
         for i in 0..num_cpu_execs.0 {
             unsafe {
@@ -398,16 +397,18 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                 };
 
                 assert_eq!(flat_raw_bms.len(), result.len());
-                let result_bms: Vec<BitMatrix> = (0..(num_bms as usize))
+                let result_bms: Vec<BitMatrix> = (0..(task.num_bms as usize))
                     .map(|i| {
                         BitMatrix::from_u32s(&result[i * 32..(i + 1) * 32])
                             .expect("could not construct BitMatrix from u32 slice")
                     })
                     .collect();
 
-                // for i in 0..4 {
-                //     println!("rbm {}: {}", i, &result_bms[i]);
-                // }
+                for i in 0..5 {
+                    println!("input bm {}: {}", i, &bms[i]);
+                    println!("rbm {}: {}", i, &result_bms[i]);
+                    println!("expected {}: {}", i, bms[i].transpose());
+                }
 
                 for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                     if !(bm.transpose().identical_to(rbm)) {
@@ -426,9 +427,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
             }
 
             let ts = unsafe {
-                    let mut ts = vec![0u32; 2];
-                    if let Some(query_pool) = query_pool.as_ref() {
-                        let raw_t = slice::from_raw_parts_mut(ts.as_mut_ptr() as *mut u8, 4 * 2);
+                let mut ts = vec![0u32; 2];
+                if let Some(query_pool) = query_pool.as_ref() {
+                    let raw_t = slice::from_raw_parts_mut(ts.as_mut_ptr() as *mut u8, 4 * 2);
                     device
                         .get_query_pool_results(
                             &query_pool,
@@ -438,8 +439,8 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                             query::ResultFlags::WAIT,
                         )
                         .unwrap();
-                    }
-                    ts
+                }
+                ts
             };
             task.timestamp_query_times
                 .push((ts[1].wrapping_sub(ts[0])) as f64 * self.ts_grain);
@@ -502,8 +503,8 @@ impl<B: hal::Backend> GpuTestEnv<B> {
     }
 
     #[cfg(feature = "metal")]
-    pub fn metal() -> GpuTestEnv<gfx_backend_metal::Backend> {
-        let instance = gfx_backend_metal::Instance::create("metal-back", 1)
+    pub fn metal() -> GpuTestEnv<Metal::Backend> {
+        let instance = Metal::Instance::create("metal-back", 1)
             .expect(&format!("could not create Metal instance"));
 
         let (device_name, memory_properties, adapter) = GpuTestEnv::load(&instance);
@@ -525,7 +526,6 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                 let task_group_prefix = format!("{}-{}", self.backend, KernelType::Threadgroup);
                 TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
-                    num_bms: 4096,
                     num_gpu_execs: nge,
                     num_cpu_execs: nce,
                     kernel_type: KernelType::Threadgroup,
@@ -534,19 +534,27 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
                         for n in 0u32..6 {
                             let num_wg = 2u32.pow(n);
-                            tasks.push(Task {
-                                name: format!("{}-WGS=({}, 32)", &task_group_prefix, num_wg * 32),
-                                workgroup_size: [num_wg, 32],
-                                timestamp_query_times: vec![],
-                                instant_times: vec![],
-                                kernel_name: format!(
-                                    "transpose-{}-WGS=({},{})",
-                                    KernelType::Threadgroup,
-                                    num_wg,
-                                    32
-                                ),
-                                kernel_type: KernelType::Threadgroup,
-                            })
+                            for num_bms in (0u32..15).map(|u| 2u32.pow(u)) {
+                                tasks.push(Task {
+                                    name: format!(
+                                        "{}-NBMS={}-WGS=({}, 32)",
+                                        &task_group_prefix,
+                                        num_bms,
+                                        num_wg * 32
+                                    ),
+                                    num_bms,
+                                    workgroup_size: [num_wg, 32],
+                                    timestamp_query_times: vec![],
+                                    instant_times: vec![],
+                                    kernel_name: format!(
+                                        "transpose-{}-WGS=({},{})",
+                                        KernelType::Threadgroup,
+                                        num_wg,
+                                        32
+                                    ),
+                                    kernel_type: KernelType::Threadgroup,
+                                })
+                            }
                         }
 
                         tasks
@@ -558,7 +566,6 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                 let task_group_prefix = format!("{}-{}", self.backend, KernelType::Shuffle);
                 TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
-                    num_bms: 4096,
                     num_gpu_execs: nge,
                     num_cpu_execs: nce,
                     kernel_type: KernelType::Shuffle,
@@ -567,19 +574,25 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
                         for n in sg_size.0..11 {
                             let num_threads = 2u32.pow(n);
-                            tasks.push(Task {
-                                name: format!("{}-WGS=({},{})", &task_group_prefix, num_threads, 1),
-                                workgroup_size: [num_threads, 1],
-                                timestamp_query_times: vec![],
-                                instant_times: vec![],
-                                kernel_name: format!(
-                                    "transpose-{}-WGS=({},{})",
-                                    KernelType::Shuffle,
-                                    num_threads,
-                                    1
-                                ),
-                                kernel_type: KernelType::Shuffle,
-                            })
+                            for num_bms in (0u32..15).map(|u| 2u32.pow(u)) {
+                                tasks.push(Task {
+                                    name: format!(
+                                        "{}-NBMS={}-WGS=({},{})",
+                                        &task_group_prefix, num_bms, num_threads, 1
+                                    ),
+                                    num_bms,
+                                    workgroup_size: [num_threads, 1],
+                                    timestamp_query_times: vec![],
+                                    instant_times: vec![],
+                                    kernel_name: format!(
+                                        "transpose-{}-WGS=({},{})",
+                                        KernelType::Shuffle,
+                                        num_threads,
+                                        1
+                                    ),
+                                    kernel_type: KernelType::Shuffle,
+                                })
+                            }
                         }
 
                         tasks
@@ -590,28 +603,34 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                 let task_group_prefix = format!("{}-{}", self.backend, KernelType::HybridShuffle);
                 TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
-                    num_bms: 4096,
                     num_gpu_execs: nge,
                     num_cpu_execs: nce,
                     kernel_type: KernelType::HybridShuffle,
                     tasks: {
                         let mut tasks = Vec::<Task>::new();
 
-                        for n in 5u32..11 {
+                        for n in 7u32..8 {
                             let num_threads = 2u32.pow(n);
-                            tasks.push(Task {
-                                name: format!("{}-WGS=({},{})", &task_group_prefix, num_threads, 1),
-                                workgroup_size: [num_threads, 1],
-                                timestamp_query_times: vec![],
-                                instant_times: vec![],
-                                kernel_name: format!(
-                                    "transpose-{}-WGS=({},{})",
-                                    KernelType::HybridShuffle,
-                                    num_threads,
-                                    1
-                                ),
-                                kernel_type: KernelType::HybridShuffle,
-                            })
+                            //
+                            for num_bms in 5..6 {
+                                tasks.push(Task {
+                                    name: format!(
+                                        "{}-NBMS={}-WGS=({},{})",
+                                        &task_group_prefix, num_bms, num_threads, 1
+                                    ),
+                                    num_bms,
+                                    workgroup_size: [num_threads, 1],
+                                    timestamp_query_times: vec![],
+                                    instant_times: vec![],
+                                    kernel_name: format!(
+                                        "transpose-{}-WGS=({},{})",
+                                        KernelType::HybridShuffle,
+                                        num_threads,
+                                        1
+                                    ),
+                                    kernel_type: KernelType::HybridShuffle,
+                                })
+                            }
                         }
 
                         tasks
@@ -633,7 +652,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     .iter()
                     .map(|t| {
                         let mut nt = t.clone();
-                        self.time_task(tg.num_bms, tg.num_cpu_execs, tg.num_gpu_execs, &mut nt);
+                        self.time_task(tg.num_cpu_execs, tg.num_gpu_execs, &mut nt);
                         println!("{}", nt);
                         nt
                     })
@@ -661,14 +680,19 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     Ok(f) => {
                         let mut wtr = csv::WriterBuilder::new().flexible(true).from_writer(f);
                         for task in tg.tasks.iter() {
-                            wtr.write_record(to_string_vec(&task.workgroup_size))
-                                .unwrap();
+                            wtr.write_record(to_string_vec(&[
+                                task.workgroup_size[0],
+                                task.workgroup_size[1],
+                                task.num_bms,
+                            ]))
+                            .unwrap();
                             wtr.write_record(to_string_vec(
                                 &task
                                     .timestamp_query_times
                                     .iter()
                                     .map(|&t| {
-                                        (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3)
+                                        (task.num_bms as f64 * tg.num_gpu_execs.0 as f64)
+                                            / (t * 1e-3)
                                     })
                                     .collect::<Vec<f64>>(),
                             ))
@@ -678,7 +702,8 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                     .instant_times
                                     .iter()
                                     .map(|&t| {
-                                        (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3)
+                                        (task.num_bms as f64 * tg.num_gpu_execs.0 as f64)
+                                            / (t * 1e-3)
                                     })
                                     .collect::<Vec<f64>>(),
                             ))
@@ -695,14 +720,19 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                         let mut wtr = csv::WriterBuilder::new().flexible(true).from_writer(f);
                         wtr.write_record(&[self.device_name.clone()]).unwrap();
                         for task in tg.tasks.iter() {
-                            wtr.write_record(to_string_vec(&task.workgroup_size))
-                                .unwrap();
+                            wtr.write_record(to_string_vec(&[
+                                task.workgroup_size[0],
+                                task.workgroup_size[1],
+                                task.num_bms,
+                            ]))
+                            .unwrap();
                             wtr.write_record(to_string_vec(
                                 &task
                                     .timestamp_query_times
                                     .iter()
                                     .map(|&t| {
-                                        (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3)
+                                        (task.num_bms as f64 * tg.num_gpu_execs.0 as f64)
+                                            / (t * 1e-3)
                                     })
                                     .collect::<Vec<f64>>(),
                             ))
@@ -712,7 +742,8 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                     .instant_times
                                     .iter()
                                     .map(|&t| {
-                                        (tg.num_bms as f64 * tg.num_gpu_execs.0 as f64) / (t * 1e-3)
+                                        (task.num_bms as f64 * tg.num_gpu_execs.0 as f64)
+                                            / (t * 1e-3)
                                     })
                                     .collect::<Vec<f64>>(),
                             ))
