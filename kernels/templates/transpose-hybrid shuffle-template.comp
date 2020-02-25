@@ -51,37 +51,30 @@ void main() {
     uint local_bm_ix = gl_LocalInvocationID.x >> 5;
     uint global_bm_ix = num_mats_per_wg*gl_WorkGroupID.x + local_bm_ix;
 
-    if (global_bm_ix < u_consts.num_bms && local_bm_ix < u_consts.num_bms) {
-        uint dst_tix = gl_LocalInvocationID.x;
-        uint dst_rix = dst_tix & 31;
+    uint dst_tix = gl_LocalInvocationID.x;
+    uint dst_rix = dst_tix & 31;
 
-        uint s;
-        uint m;
-        uint src_tix;
-        uint src_rix;
-        uint src_dat;
-        uint dst_dat = bms[global_bm_ix][dst_rix];
+    // comment out OPTION 1 if OPTION 0 is uncommented
 
-        for (uint iter = 0; iter < u_consts.num_executions; iter++) {
-            for (int i = 0; i < 5; i++) {
-                s = shifts[i];
-                m = masks[i];
-                if (s >= 16) {
-                    tg_bms[local_bm_ix][dst_rix] = dst_dat;
-                    barrier();
+    // with OPTION 0 you should see zeroes being successfully saved into output
+    // START: OPTION 0
+//    tg_bms[local_bm_ix][dst_rix] = dst_dat;
+//    barrier();
+//
+//    bms[global_bm_ix][dst_rix] = 0;
+    // END: OPTION 0
 
-                    src_tix = dst_tix^s;
-                    src_rix = src_tix & 31;
-                    src_dat = tg_bms[local_bm_ix][src_rix];
-                    barrier();
 
-                    dst_dat = shuffle_round_tg(dst_tix, dst_dat, src_dat, m, s);
-                } else {
-                    dst_dat = shuffle_round(dst_tix, dst_dat, m, s);
-                }
-            }
-        }
+    // START: OPTION 1
+    if (global_bm_ix < u_consts.num_bms) {
 
-        bms[global_bm_ix][dst_rix] = dst_dat;
+        // when PROBLEM BLOCK is commented, all zeros appear
+        // START: PROBLEM BLOCK
+        tg_bms[local_bm_ix][dst_rix] = 1;
+        barrier();
+        // END: PROBLEM BLOCK
+
+        bms[global_bm_ix][dst_rix] = 0;
     }
+    // END: OPTION 1
 }

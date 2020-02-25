@@ -404,11 +404,11 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     })
                     .collect();
 
-                for i in 0..5 {
-                    println!("input bm {}: {}", i, &bms[i]);
-                    println!("rbm {}: {}", i, &result_bms[i]);
-                    println!("expected {}: {}", i, bms[i].transpose());
-                }
+                // for i in 0..5 {
+                //     println!("input bm {}: {}", i, &bms[i]);
+                //     println!("rbm {}: {}", i, &result_bms[i]);
+                //     println!("expected {}: {}", i, bms[i].transpose());
+                // }
 
                 for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                     if !(bm.transpose().identical_to(rbm)) {
