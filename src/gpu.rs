@@ -404,11 +404,11 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     })
                     .collect();
 
-                for i in 0..5 {
-                    println!("input bm {}: {}", i, &bms[i]);
-                    println!("rbm {}: {}", i, &result_bms[i]);
-                    println!("expected {}: {}", i, bms[i].transpose());
-                }
+                // for i in 0..5 {
+                //     println!("input bm {}: {}", i, &bms[i]);
+                //     println!("rbm {}: {}", i, &result_bms[i]);
+                //     println!("expected {}: {}", i, bms[i].transpose());
+                // }
 
                 for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
                     if !(bm.transpose().identical_to(rbm)) {
@@ -609,10 +609,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     tasks: {
                         let mut tasks = Vec::<Task>::new();
 
-                        for n in 7u32..8 {
+                        for n in 5u32..11 {
                             let num_threads = 2u32.pow(n);
-                            //
-                            for num_bms in 5..6 {
+                            for num_bms in (0u32..15).map(|u| 2u32.pow(u)) {
                                 tasks.push(Task {
                                     name: format!(
                                         "{}-NBMS={}-WGS=({},{})",
