@@ -611,7 +611,8 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
                         for n in 5u32..11 {
                             let num_threads = 2u32.pow(n);
-                            for num_bms in (0u32..15).map(|u| 2u32.pow(u)) {
+                            // can't go from 0 to 15 yet due to hybrid shuffle kernel issues (see branch barrier-weirdness)
+                            for num_bms in ((n - 5)..15).map(|u| 2u32.pow(u)) {
                                 tasks.push(Task {
                                     name: format!(
                                         "{}-NBMS={}-WGS=({},{})",
