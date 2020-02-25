@@ -30,9 +30,13 @@ fn main() {
         test_env.time_task_group();
         test_env.save_results();
 
-        // test_env.set_task_group(TaskGroupDefn::Shuffle(NumCpuExecs(101), NumGpuExecs(1001), SubgroupSizeLog2(6)));
-        // test_env.time_task_group();
-        // test_env.save_results();
+        test_env.set_task_group(TaskGroupDefn::Shuffle(
+            NumCpuExecs(101),
+            NumGpuExecs(1001),
+            SubgroupSizeLog2(6),
+        ));
+        test_env.time_task_group();
+        test_env.save_results();
 
         test_env.set_task_group(TaskGroupDefn::HybridShuffle(
             NumCpuExecs(101),
