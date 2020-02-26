@@ -20,27 +20,34 @@ fn main() {
     #[cfg(debug_assertions)]
     env_logger::init();
 
+    if !(cfg!(feature = "vk") | cfg!(feature = "dx12") | cfg!(feature = "metal")) {
+        panic!("no backend loaded! `cargo run --features X`, where X is one of vk, dx12 or metal");
+    }
+    
+    let num_cpu_execs: u32 = 101;
+    let num_gpu_execs: u32 = 1001;
+
     #[cfg(feature = "vk")]
     {
         let mut test_env = GpuTestEnv::<Vulkan::Backend>::vulkan();
         test_env.set_task_group(TaskGroupDefn::Threadgroup(
-            NumCpuExecs(101),
-            NumGpuExecs(1001),
+            NumCpuExecs(num_cpu_execs),
+            NumGpuExecs(num_gpu_execs),
         ));
         test_env.time_task_group();
         test_env.save_results();
 
         test_env.set_task_group(TaskGroupDefn::Shuffle(
-            NumCpuExecs(101),
-            NumGpuExecs(1001),
+            NumCpuExecs(num_cpu_execs),
+            NumGpuExecs(num_gpu_execs),
             SubgroupSizeLog2(6),
         ));
         test_env.time_task_group();
         test_env.save_results();
 
         test_env.set_task_group(TaskGroupDefn::HybridShuffle(
-            NumCpuExecs(101),
-            NumGpuExecs(1001),
+            NumCpuExecs(num_cpu_execs),
+            NumGpuExecs(num_gpu_execs),
         ));
         test_env.time_task_group();
         test_env.save_results();
@@ -50,15 +57,15 @@ fn main() {
     {
         let mut test_env = GpuTestEnv::<Metal::Backend>::metal();
         test_env.set_task_group(TaskGroupDefn::Threadgroup(
-            NumCpuExecs(10),
-            NumGpuExecs(1001),
+            NumCpuExecs(num_cpu_execs),
+            NumGpuExecs(num_gpu_execs),
         ));
         test_env.time_task_group();
         test_env.save_results();
 
         test_env.set_task_group(TaskGroupDefn::HybridShuffle(
-            NumCpuExecs(10),
-            NumGpuExecs(1001),
+            NumCpuExecs(num_cpu_execs),
+            NumGpuExecs(num_gpu_execs),
         ));
         test_env.time_task_group();
         test_env.save_results();

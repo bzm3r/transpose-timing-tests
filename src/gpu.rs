@@ -47,6 +47,7 @@ impl fmt::Display for BackendVariant {
             BackendVariant::Dx12 => write!(f, "{}", "dx12"),
             #[cfg(feature = "metal")]
             BackendVariant::Metal => write!(f, "{}", "metal"),
+            _ => write!(f, "{}", "unknown"),
         }
     }
 }
@@ -157,14 +158,24 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     &[
                         pso::DescriptorSetLayoutBinding {
                             binding: 0,
-                            ty: pso::DescriptorType::StorageBuffer,
+                            ty: pso::DescriptorType::Buffer {
+                                ty: pso::BufferDescriptorType::Storage { read_only: false },
+                                format: pso::BufferDescriptorFormat::Structured {
+                                    dynamic_offset: false,
+                                },
+                            },
                             count: 1,
                             stage_flags: pso::ShaderStageFlags::COMPUTE,
                             immutable_samplers: false,
                         },
                         pso::DescriptorSetLayoutBinding {
                             binding: 1,
-                            ty: pso::DescriptorType::UniformBuffer,
+                            ty: pso::DescriptorType::Buffer {
+                                ty: pso::BufferDescriptorType::Uniform,
+                                format: pso::BufferDescriptorFormat::Structured {
+                                    dynamic_offset: false,
+                                },
+                            },
                             count: 1,
                             stage_flags: pso::ShaderStageFlags::COMPUTE,
                             immutable_samplers: false,
@@ -195,11 +206,21 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     1,
                     &[
                         pso::DescriptorRangeDesc {
-                            ty: pso::DescriptorType::StorageBuffer,
+                            ty: pso::DescriptorType::Buffer {
+                                ty: pso::BufferDescriptorType::Storage { read_only: false },
+                                format: pso::BufferDescriptorFormat::Structured {
+                                    dynamic_offset: false,
+                                },
+                            },
                             count: 1,
                         },
                         pso::DescriptorRangeDesc {
-                            ty: pso::DescriptorType::UniformBuffer,
+                            ty: pso::DescriptorType::Buffer {
+                                ty: pso::BufferDescriptorType::Uniform,
+                                format: pso::BufferDescriptorFormat::Structured {
+                                    dynamic_offset: false,
+                                },
+                            },
                             count: 1,
                         },
                     ],
@@ -468,7 +489,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
     #[cfg(feature = "vk")]
     pub fn vulkan() -> GpuTestEnv<Vulkan::Backend> {
-        let instance = Vulkan::Instance::create("vk-back", 1)
+        let instance = Vulkan::Instance::create("vk-back", 1, hal::ApiVersion::new(1, 1, 1))
             .expect(&format!("could not create Vulkan instance"));
 
         let (device_name, memory_properties, adapter) = GpuTestEnv::load(&instance);
@@ -486,7 +507,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
     #[cfg(feature = "dx12")]
     pub fn dx12() -> GpuTestEnv<Dx12::Backend> {
-        let instance = Dx12::Instance::create("dx12-back", 1)
+        let instance = Dx12::Instance::create("dx12-back", 1, hal::ApiVersion::dummy())
             .expect(&format!("could not create DX12 instance"));
 
         let (device_name, memory_properties, adapter) = GpuTestEnv::load(&instance);
@@ -504,7 +525,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
     #[cfg(feature = "metal")]
     pub fn metal() -> GpuTestEnv<Metal::Backend> {
-        let instance = Metal::Instance::create("metal-back", 1)
+        let instance = Metal::Instance::create("metal-back", 1, hal::ApiVersion::dummy())
             .expect(&format!("could not create Metal instance"));
 
         let (device_name, memory_properties, adapter) = GpuTestEnv::load(&instance);

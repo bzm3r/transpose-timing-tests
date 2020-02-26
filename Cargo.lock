@@ -242,8 +242,8 @@ dependencies = [
 
 [[package]]
 name = "gfx-auxil"
-version = "0.1.0"
-source = "git+https://github.com/bzm3r/gfx.git?rev=4921b4e1#4921b4e177631fe81868d4164cf4deff67eb1851"
+version = "0.2.0"
+source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
 dependencies = [
  "fxhash",
  "gfx-hal",
@@ -252,8 +252,8 @@ dependencies = [
 
 [[package]]
 name = "gfx-backend-dx12"
-version = "0.4.3"
-source = "git+https://github.com/bzm3r/gfx.git?rev=4921b4e1#4921b4e177631fe81868d4164cf4deff67eb1851"
+version = "0.4.0"
+source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
 dependencies = [
  "bitflags",
  "d3d12",
@@ -269,8 +269,8 @@ dependencies = [
 
 [[package]]
 name = "gfx-backend-metal"
-version = "0.4.2"
-source = "git+https://github.com/bzm3r/gfx.git?rev=4921b4e1#4921b4e177631fe81868d4164cf4deff67eb1851"
+version = "0.4.3"
+source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
 dependencies = [
  "arrayvec",
  "bitflags",
@@ -295,8 +295,8 @@ dependencies = [
 
 [[package]]
 name = "gfx-backend-vulkan"
-version = "0.4.2"
-source = "git+https://github.com/bzm3r/gfx.git?rev=4921b4e1#4921b4e177631fe81868d4164cf4deff67eb1851"
+version = "0.4.0"
+source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
 dependencies = [
  "arrayvec",
  "ash",
@@ -315,7 +315,7 @@ dependencies = [
 [[package]]
 name = "gfx-hal"
 version = "0.4.1"
-source = "git+https://github.com/bzm3r/gfx.git?rev=4921b4e1#4921b4e177631fe81868d4164cf4deff67eb1851"
+source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
 dependencies = [
  "bitflags",
  "raw-window-handle",
@@ -405,12 +405,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "maybe-uninit"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
-
-[[package]]
 name = "memchr"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -452,26 +446,24 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f842b1982eb6c2fe34036a4fbfb06dd185a3f5c8edfaacdf7d1ea10b07de6252"
+checksum = "92e98c49ab0b7ce5b222f2cc9193fc4efe11c6d0bd4f648e374684a6857b1cfc"
 dependencies = [
  "lock_api",
  "parking_lot_core",
- "rustc_version",
 ]
 
 [[package]]
 name = "parking_lot_core"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b876b1b9e7ac6e1a74a6da34d25c42e17e8862aa409cbbbdcfc8d86c6f3bc62b"
+checksum = "7582838484df45743c8434fbff785e8edf260c28748353d44bc0da32e0ceabf1"
 dependencies = [
  "cfg-if",
  "cloudabi",
  "libc",
  "redox_syscall",
- "rustc_version",
  "smallvec",
  "winapi",
 ]
@@ -556,7 +548,7 @@ dependencies = [
 [[package]]
 name = "range-alloc"
 version = "0.1.0"
-source = "git+https://github.com/bzm3r/gfx.git?rev=4921b4e1#4921b4e177631fe81868d4164cf4deff67eb1851"
+source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
 
 [[package]]
 name = "raw-window-handle"
@@ -601,15 +593,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b28dfe3fe9badec5dbf0a79a9cccad2cfc2ab5484bdb3e44cbd1ae8b3ba2be06"
 
 [[package]]
-name = "rustc_version"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
-dependencies = [
- "semver",
-]
-
-[[package]]
 name = "ryu"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -620,21 +603,6 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
-
-[[package]]
-name = "semver"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
-dependencies = [
- "semver-parser",
-]
-
-[[package]]
-name = "semver-parser"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "serde"
@@ -674,18 +642,15 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "0.6.13"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7b0758c52e15a8b5e3691eae6cc559f08eee9406e548a4477ba4e67770a82b6"
-dependencies = [
- "maybe-uninit",
-]
+checksum = "5c2fb2ec9bcd216a5b0d0ccf31ab17b5ed1d627960edff65bbe95d3ce221cefc"
 
 [[package]]
 name = "spirv_cross"
-version = "0.16.0"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbbe441b3ac8ec0ae6a4f05234239bd372a241ce15793eef694e8b24afc267bb"
+checksum = "da75d6051e33083811473411a39069837d294845eaff5a4604845bc8b03ce759"
 dependencies = [
  "cc",
  "js-sys",

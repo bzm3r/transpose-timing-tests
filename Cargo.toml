@@ -7,14 +7,14 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["gfx-backend-dx12", "gfx-backend-vulkan"]
+default = []
 dx12 = ["gfx-backend-dx12"]
 vk = ["gfx-backend-vulkan"]
 metal = ["gfx-backend-metal"]
 
 [dependencies]
 log = "0.4"
-gfx-hal = { git = "https://github.com/bzm3r/gfx.git", rev = "4921b4e1"}
+gfx-hal = { git = "https://github.com/bzm3r/gfx.git", rev = "955e068c"}
 shaderc = "0.6.1"
 rand = "0.7.3"
 env_logger = "0.6"
@@ -22,16 +22,16 @@ csv = "1.1"
 
 [dependencies.gfx-backend-dx12]
 git = "https://github.com/bzm3r/gfx.git"
-rev = "4921b4e1"
+rev = "955e068c"
 optional = true
 
 [dependencies.gfx-backend-vulkan]
 git = "https://github.com/bzm3r/gfx.git"
-rev = "4921b4e1"
+rev = "955e068c"
 optional = true
 features = ["x11"]
 
 [dependencies.gfx-backend-metal]
 git = "https://github.com/bzm3r/gfx.git"
-rev = "4921b4e1"
+rev = "955e068c"
 optional = true
