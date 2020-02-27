@@ -582,7 +582,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     },
                 }
             }
-            TaskGroupDefn::Shuffle(nce, nge, sg_size) => {
+            TaskGroupDefn::Shuffle(nce, nge, sg_size) | TaskGroupDefn::Ballot(nce, nge, sg_size) => {
                 no_intel_for_subgroups(&self.device_name, KernelType::Shuffle);
                 let task_group_prefix = format!("{}-{}", self.backend, KernelType::Shuffle);
                 TaskGroup {

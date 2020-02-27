@@ -14,7 +14,7 @@ metal = ["gfx-backend-metal"]
 
 [dependencies]
 log = "0.4"
-gfx-hal = { git = "https://github.com/bzm3r/gfx.git", rev = "955e068c"}
+gfx-hal = { git = "https://github.com/bzm3r/gfx.git", rev = "8175be61"}
 shaderc = "0.6.1"
 rand = "0.7.3"
 env_logger = "0.6"
@@ -22,16 +22,16 @@ csv = "1.1"
 
 [dependencies.gfx-backend-dx12]
 git = "https://github.com/bzm3r/gfx.git"
-rev = "955e068c"
+rev = "8175be61"
 optional = true
 
 [dependencies.gfx-backend-vulkan]
 git = "https://github.com/bzm3r/gfx.git"
-rev = "955e068c"
+rev = "8175be61"
 optional = true
 features = ["x11"]
 
 [dependencies.gfx-backend-metal]
 git = "https://github.com/bzm3r/gfx.git"
-rev = "955e068c"
+rev = "8175be61"
 optional = true

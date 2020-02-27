@@ -243,7 +243,7 @@ dependencies = [
 [[package]]
 name = "gfx-auxil"
 version = "0.2.0"
-source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
+source = "git+https://github.com/bzm3r/gfx.git?rev=8175be61#8175be61a7b1465e7f9529192e12494d4387cfd6"
 dependencies = [
  "fxhash",
  "gfx-hal",
@@ -253,7 +253,7 @@ dependencies = [
 [[package]]
 name = "gfx-backend-dx12"
 version = "0.4.0"
-source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
+source = "git+https://github.com/bzm3r/gfx.git?rev=8175be61#8175be61a7b1465e7f9529192e12494d4387cfd6"
 dependencies = [
  "bitflags",
  "d3d12",
@@ -270,7 +270,7 @@ dependencies = [
 [[package]]
 name = "gfx-backend-metal"
 version = "0.4.3"
-source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
+source = "git+https://github.com/bzm3r/gfx.git?rev=8175be61#8175be61a7b1465e7f9529192e12494d4387cfd6"
 dependencies = [
  "arrayvec",
  "bitflags",
@@ -296,7 +296,7 @@ dependencies = [
 [[package]]
 name = "gfx-backend-vulkan"
 version = "0.4.0"
-source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
+source = "git+https://github.com/bzm3r/gfx.git?rev=8175be61#8175be61a7b1465e7f9529192e12494d4387cfd6"
 dependencies = [
  "arrayvec",
  "ash",
@@ -315,7 +315,7 @@ dependencies = [
 [[package]]
 name = "gfx-hal"
 version = "0.4.1"
-source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
+source = "git+https://github.com/bzm3r/gfx.git?rev=8175be61#8175be61a7b1465e7f9529192e12494d4387cfd6"
 dependencies = [
  "bitflags",
  "raw-window-handle",
@@ -548,7 +548,7 @@ dependencies = [
 [[package]]
 name = "range-alloc"
 version = "0.1.0"
-source = "git+https://github.com/bzm3r/gfx.git?rev=955e068c#955e068c26501bfb380beaef4f369775bd3a8e1f"
+source = "git+https://github.com/bzm3r/gfx.git?rev=8175be61#8175be61a7b1465e7f9529192e12494d4387cfd6"
 
 [[package]]
 name = "raw-window-handle"

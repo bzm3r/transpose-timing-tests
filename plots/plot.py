@@ -19,7 +19,7 @@ k_to_abbr = dict(zip(knowns, [g[1] for g in gpu_info]))
 k_to_col = dict(zip(knowns, [g[2] for g in gpu_info]))
 free_colors = ['#25871e', '#1e8787', '#871e1e', '#875b1e', '#c0b926', '#c08526']
 
-kernel_line_styles = dict([("shuffle", "-"), ("hybrid shuffle", "--"), ("threadgroup", ":")])
+kernel_line_styles = dict([("shuffle", "-"), ("ballot", "--"), ("hybrid shuffle", "-."), ("threadgroup", ":")])
 
 cwd = os.getcwd()
 dat_files = [f for f in os.listdir(cwd) if os.path.splitext(f)[1] == ".dat"]

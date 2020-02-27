@@ -174,6 +174,7 @@ pub enum TaskGroupDefn {
     Threadgroup(NumCpuExecs, NumGpuExecs),
     Shuffle(NumCpuExecs, NumGpuExecs, SubgroupSizeLog2),
     HybridShuffle(NumCpuExecs, NumGpuExecs),
+    Ballot(NumCpuExecs, NumGpuExecs, SubgroupSizeLog2)
 }
 
 pub struct TaskGroup {
