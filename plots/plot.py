@@ -7,6 +7,7 @@ import os
 print("Please update known GPU info in plot.py if possible!")
 # (gpu name, abbreviation, optimal tg size, line colour)
 gpu_info = [("GeForce GTX 1060", "NVD GTX 1060", '#f80606'),
+            ("GeForce RTX 2060", "NVD RTX 2060", '#25871e'),
             ("Intel(R) HD Graphics 630", "INT HD 630", '#0646f8'),
             ("Intel(R) Ivybridge Mobile", "INT IVYMOB 630", '#be06f8'),
             ("Intel(R) Iris(TM) Plus Graphics 640", "INT Iris 640", '#06f8e5'),
@@ -17,7 +18,7 @@ gpu_info = [("GeForce GTX 1060", "NVD GTX 1060", '#f80606'),
 knowns = [g[0] for g in gpu_info]
 k_to_abbr = dict(zip(knowns, [g[1] for g in gpu_info]))
 k_to_col = dict(zip(knowns, [g[2] for g in gpu_info]))
-free_colors = ['#25871e', '#1e8787', '#871e1e', '#875b1e', '#c0b926', '#c08526']
+free_colors = ['#1e8787', '#871e1e', '#875b1e', '#c0b926', '#c08526']
 
 kernel_line_styles = dict([("shuffle", "-"), ("ballot", "--"), ("hybrid shuffle", "-."), ("threadgroup", ":")])
 
