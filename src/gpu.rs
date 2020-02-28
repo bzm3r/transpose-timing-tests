@@ -53,6 +53,7 @@ impl fmt::Display for BackendVariant {
 }
 
 const NVIDIA_GTX_1060: &str = "GeForce GTX 1060";
+const NVIDIA_RTX_2060: &str = "GeForce RTX 2060";
 const INTEL_HD_630: &str = "Intel(R) HD Graphics 630";
 const INTEL_IVYBRIDGE_MOBILE: &str = "Intel(R) Ivybridge Mobile";
 const INTEL_IRIS_PLUS_640: &str = "Intel(R) Iris(TM) Plus Graphics 640";
@@ -802,6 +803,10 @@ fn vk_get_timestamp_period(device_name: &str) -> Result<f64, String> {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7922
             Ok(1.0e-6)
         }
+        NVIDIA_RTX_2060 => {
+            // https://vulkan.gpuinfo.org/displayreport.php?id=7885
+            Ok(1.0e-6)
+        }
         INTEL_HD_630 => {
             // https://vulkan.gpuinfo.org/displayreport.php?id=7797
             Ok(83.333e-6)
@@ -835,7 +840,7 @@ fn vk_get_timestamp_period(device_name: &str) -> Result<f64, String> {
 
 pub fn is_intel(device_name: &str) -> Result<bool, String> {
     match device_name {
-        NVIDIA_GTX_1060 | AMD_RADEON_RX570 => {Ok(false)}
+        NVIDIA_GTX_1060 | NVIDIA_RTX_2060 | AMD_RADEON_RX570 => {Ok(false)}
         INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => {Ok(true)}
         _ => Err(String::from("Unknown device.")),
     }
