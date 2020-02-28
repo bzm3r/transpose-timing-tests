@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::file_utils::is_relatively_fresh;
 
 #[allow(dead_code)]
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum KernelType {
     Threadgroup,
     Ballot,

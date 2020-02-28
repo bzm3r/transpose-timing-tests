@@ -583,16 +583,22 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                 })
             }
             TaskGroupDefn::Shuffle(nce, nge, sg_size) | TaskGroupDefn::Ballot(nce, nge, sg_size) => {
+                let kernel_type = match task_group_defn {
+                    TaskGroupDefn::Shuffle(_, _, _) => KernelType::Shuffle,
+                    TaskGroupDefn::Ballot(_, _, _) => KernelType::Ballot,
+                    _ => unreachable!(),
+                };
+
                 if is_intel(&self.device_name).unwrap() {
                     println!("Detected Intel device, skipping creation of subgroup kernel task group.");
                     None
                 } else {
-                    let task_group_prefix = format!("{}-{}", self.backend, KernelType::Shuffle);
+                    let task_group_prefix = format!("{}-{}", self.backend, kernel_type);
                     Some(TaskGroup {
                         name: format!("{}-{}", &task_group_prefix, self.device_name),
                         num_gpu_execs: nge,
                         num_cpu_execs: nce,
-                        kernel_type: KernelType::Shuffle,
+                        kernel_type: kernel_type,
                         tasks: {
                             let mut tasks = Vec::<Task>::new();
 
@@ -610,15 +616,14 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                         instant_times: vec![],
                                         kernel_name: format!(
                                             "transpose-{}-WGS=({},{})",
-                                            KernelType::Shuffle,
+                                            kernel_type,
                                             num_threads,
                                             1
                                         ),
-                                        kernel_type: KernelType::Shuffle,
+                                        kernel_type,
                                     })
                                 }
                             }
-
                             tasks
                         },
                     })
