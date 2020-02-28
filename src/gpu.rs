@@ -584,12 +584,17 @@ impl<B: hal::Backend> GpuTestEnv<B> {
             }
             TaskGroupDefn::Shuffle(nce, nge, sg_size) | TaskGroupDefn::Ballot(nce, nge, sg_size) => {
                 no_intel_for_subgroups(&self.device_name, KernelType::Shuffle);
-                let task_group_prefix = format!("{}-{}", self.backend, KernelType::Shuffle);
+                let kernel_type = match task_group_defn {
+                    TaskGroupDefn::Shuffle(_, _, _) => KernelType::Shuffle,
+                    TaskGroupDefn::Ballot(_, _, _) => KernelType::Ballot,
+                    _ => unreachable!(),
+                };
+                let task_group_prefix = format!("{}-{}", self.backend, kernel_type);
                 TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
                     num_gpu_execs: nge,
                     num_cpu_execs: nce,
-                    kernel_type: KernelType::Shuffle,
+                    kernel_type,
                     tasks: {
                         let mut tasks = Vec::<Task>::new();
 
@@ -607,11 +612,11 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                     instant_times: vec![],
                                     kernel_name: format!(
                                         "transpose-{}-WGS=({},{})",
-                                        KernelType::Shuffle,
+                                        kernel_type,
                                         num_threads,
                                         1
                                     ),
-                                    kernel_type: KernelType::Shuffle,
+                                    kernel_type,
                                 })
                             }
                         }

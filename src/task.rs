@@ -3,7 +3,7 @@ use std::fmt::Write;
 use std::fs::OpenOptions;
 
 #[allow(dead_code)]
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum KernelType {
     Threadgroup,
     Ballot,
