@@ -34,13 +34,13 @@ void main() {
     const uint sgs_per_wg = gl_WorkGroupSize.x >> log2_sg_size;
     uint global_bm_ix = sgs_per_wg*mats_per_sg*gl_WorkGroupID.x + mats_per_sg*gl_SubgroupID + (gl_SubgroupInvocationID >> 5);
     uint row_id = gl_SubgroupInvocationID & 31;
-    uint input_row = bm[global_bm_ix][row_id];
+    uint input_row = bms[global_bm_ix][row_id];
 
     uint row;
     uint shift_mask;
     uvec4 vote;
 
-    for (uint iter = 0; iter < NUM_EXECUTIONS; iter++) {
+    for (uint iter = 0; iter < u_consts.num_executions; iter++) {
         row = input_row;
         for (uint i = 0; i < 32; i++) {
             shift_mask = 1 << i;
@@ -51,5 +51,5 @@ void main() {
         }
     }
 
-    bm[global_bm_ix][row_id] = row;
+    bms[global_bm_ix][row_id] = row;
 }

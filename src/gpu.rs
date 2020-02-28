@@ -543,10 +543,10 @@ impl<B: hal::Backend> GpuTestEnv<B> {
     }
 
     pub fn set_task_group(&mut self, task_group_defn: TaskGroupDefn) {
-        let task_group = match task_group_defn {
+        self.task_group = match task_group_defn {
             TaskGroupDefn::Threadgroup(nce, nge) => {
                 let task_group_prefix = format!("{}-{}", self.backend, KernelType::Threadgroup);
-                TaskGroup {
+                Some(TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
                     num_gpu_execs: nge,
                     num_cpu_execs: nce,
@@ -581,87 +581,96 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
                         tasks
                     },
-                }
+                })
             }
             TaskGroupDefn::Shuffle(nce, nge, sg_size) | TaskGroupDefn::Ballot(nce, nge, sg_size) => {
-                no_intel_for_subgroups(&self.device_name, KernelType::Shuffle);
-                let task_group_prefix = format!("{}-{}", self.backend, KernelType::Shuffle);
-                TaskGroup {
-                    name: format!("{}-{}", &task_group_prefix, self.device_name),
-                    num_gpu_execs: nge,
-                    num_cpu_execs: nce,
-                    kernel_type: KernelType::Shuffle,
-                    tasks: {
-                        let mut tasks = Vec::<Task>::new();
+                let kernel_type = match task_group_defn {
+                    TaskGroupDefn::Shuffle(_, _, _) => KernelType::Shuffle,
+                    TaskGroupDefn::Ballot(_, _, _) => KernelType::Ballot,
+                    _ => unreachable!(),
+                };
 
-                        for n in sg_size.0..11 {
-                            let num_threads = 2u32.pow(n);
-                            for num_bms in (0u32..15).map(|u| 2u32.pow(u)) {
-                                tasks.push(Task {
-                                    name: format!(
-                                        "{}-NBMS={}-WGS=({},{})",
-                                        &task_group_prefix, num_bms, num_threads, 1
-                                    ),
-                                    num_bms,
-                                    workgroup_size: [num_threads, 1],
-                                    timestamp_query_times: vec![],
-                                    instant_times: vec![],
-                                    kernel_name: format!(
-                                        "transpose-{}-WGS=({},{})",
-                                        KernelType::Shuffle,
-                                        num_threads,
-                                        1
-                                    ),
-                                    kernel_type: KernelType::Shuffle,
-                                })
+                if is_intel(&self.device_name).unwrap() {
+                    println!("Detected Intel device, skipping creation of subgroup kernel task group.");
+                    None
+                } else {
+                    let task_group_prefix = format!("{}-{}", self.backend, kernel_type);
+                    Some(TaskGroup {
+                        name: format!("{}-{}", &task_group_prefix, self.device_name),
+                        num_gpu_execs: nge,
+                        num_cpu_execs: nce,
+                        kernel_type: kernel_type,
+                        tasks: {
+                            let mut tasks = Vec::<Task>::new();
+
+                            for n in sg_size.0..11 {
+                                let num_threads = 2u32.pow(n);
+                                for num_bms in (0u32..15).map(|u| 2u32.pow(u)) {
+                                    tasks.push(Task {
+                                        name: format!(
+                                            "{}-NBMS={}-WGS=({},{})",
+                                            &task_group_prefix, num_bms, num_threads, 1
+                                        ),
+                                        num_bms,
+                                        workgroup_size: [num_threads, 1],
+                                        timestamp_query_times: vec![],
+                                        instant_times: vec![],
+                                        kernel_name: format!(
+                                            "transpose-{}-WGS=({},{})",
+                                            kernel_type,
+                                            num_threads,
+                                            1
+                                        ),
+                                        kernel_type,
+                                    })
+                                }
                             }
-                        }
-
-                        tasks
-                    },
+                            tasks
+                        },
+                    })
                 }
             }
             TaskGroupDefn::HybridShuffle(nce, nge) => {
                 let task_group_prefix = format!("{}-{}", self.backend, KernelType::HybridShuffle);
-                TaskGroup {
-                    name: format!("{}-{}", &task_group_prefix, self.device_name),
-                    num_gpu_execs: nge,
-                    num_cpu_execs: nce,
-                    kernel_type: KernelType::HybridShuffle,
-                    tasks: {
-                        let mut tasks = Vec::<Task>::new();
+                Some(
+                    TaskGroup {
+                        name: format!("{}-{}", &task_group_prefix, self.device_name),
+                        num_gpu_execs: nge,
+                        num_cpu_execs: nce,
+                        kernel_type: KernelType::HybridShuffle,
+                        tasks: {
+                            let mut tasks = Vec::<Task>::new();
 
-                        for n in 5u32..11 {
-                            let num_threads = 2u32.pow(n);
-                            // can't go from 0 to 15 yet due to hybrid shuffle kernel issues (see branch barrier-weirdness)
-                            for num_bms in ((n - 5)..15).map(|u| 2u32.pow(u)) {
-                                tasks.push(Task {
-                                    name: format!(
-                                        "{}-NBMS={}-WGS=({},{})",
-                                        &task_group_prefix, num_bms, num_threads, 1
-                                    ),
-                                    num_bms,
-                                    workgroup_size: [num_threads, 1],
-                                    timestamp_query_times: vec![],
-                                    instant_times: vec![],
-                                    kernel_name: format!(
-                                        "transpose-{}-WGS=({},{})",
-                                        KernelType::HybridShuffle,
-                                        num_threads,
-                                        1
-                                    ),
-                                    kernel_type: KernelType::HybridShuffle,
-                                })
+                            for n in 5u32..11 {
+                                let num_threads = 2u32.pow(n);
+                                // can't go from 0 to 15 yet due to hybrid shuffle kernel issues (see branch barrier-weirdness)
+                                for num_bms in ((n - 5)..15).map(|u| 2u32.pow(u)) {
+                                    tasks.push(Task {
+                                        name: format!(
+                                            "{}-NBMS={}-WGS=({},{})",
+                                            &task_group_prefix, num_bms, num_threads, 1
+                                        ),
+                                        num_bms,
+                                        workgroup_size: [num_threads, 1],
+                                        timestamp_query_times: vec![],
+                                        instant_times: vec![],
+                                        kernel_name: format!(
+                                            "transpose-{}-WGS=({},{})",
+                                            KernelType::HybridShuffle,
+                                            num_threads,
+                                            1
+                                        ),
+                                        kernel_type: KernelType::HybridShuffle,
+                                    })
+                                }
                             }
-                        }
 
-                        tasks
-                    },
-                }
+                            tasks
+                        },
+                    }
+                )
             }
-        };
-
-        self.task_group = Some(task_group);
+        }
     }
 
     pub fn time_task_group(&mut self) {
@@ -681,7 +690,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     .collect::<Vec<Task>>()
             }
             _ => {
-                println!("no task group to run!");
+                println!("no task group to run");
                 vec![]
             }
         };
@@ -776,7 +785,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                 };
             }
             _ => {
-                println!("no task group for which to save results");
+                println!("no task group with results to save");
             }
         }
     }
@@ -829,18 +838,11 @@ fn vk_get_timestamp_period(device_name: &str) -> Result<f64, String> {
     }
 }
 
-pub fn no_intel_for_subgroups(device_name: &str, kernel_type: KernelType) {
+pub fn is_intel(device_name: &str) -> Result<bool, String> {
     match device_name {
-        NVIDIA_GTX_1060 | NVIDIA_RTX_2060 | AMD_RADEON_RX570 => {}
-        INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => {
-            match kernel_type {
-                KernelType::Ballot | KernelType::Shuffle => {
-                    panic!("Don't run the subgroup kernels on Intel devices!")
-                }
-                _ => {}
-            }
-        }
-        _ => panic!("Unknown device! Please register with gpu.rs before proceeding."),
+        NVIDIA_GTX_1060 | NVIDIA_RTX_2060 | AMD_RADEON_RX570 => {Ok(false)}
+        INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => {Ok(true)}
+        _ => Err(String::from("Unknown device.")),
     }
 }
 
