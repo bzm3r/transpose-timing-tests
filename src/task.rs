@@ -1,6 +1,9 @@
 use std::fmt;
 use std::fmt::Write;
-use std::fs::OpenOptions;
+use std::fs::{OpenOptions, create_dir};
+use std::path::{Path, PathBuf};
+
+use crate::file_utils::is_relatively_fresh;
 
 #[allow(dead_code)]
 #[derive(Clone)]
@@ -59,52 +62,29 @@ impl Task {
         (self.instant_times.len(), avg_time, std_time)
     }
 
-    pub fn compile_kernel(&self) -> std::fs::File {
-        let kernel_fp = format!("kernels/spv/{}.spv", self.kernel_name);
-        match OpenOptions::new().read(true).open(&kernel_fp) {
-            Ok(f) => {
-                println!("{} kernel already compiled...", self.kernel_name);
-                f
-            }
-            Err(_) => {
-                println!("compiling kernel {}...", self.kernel_name);
-                let glsl = self.materialize_kernel();
-                let mut compiler = shaderc::Compiler::new().unwrap();
-                let mut options = shaderc::CompileOptions::new().unwrap();
-                options.set_target_env(
-                    shaderc::TargetEnv::Vulkan,
-                    ((1 as u32) << 22) | ((1 as u32) << 12),
-                );
-                let artifact = compiler
-                    .compile_into_spirv(
-                        &glsl,
-                        shaderc::ShaderKind::Compute,
-                        &format!("{}.glsl", self.kernel_name),
-                        "main",
-                        Some(&options),
-                    )
-                    .unwrap();
-                let mut compiled_kernel = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .open(&kernel_fp)
-                    .unwrap();
-                use std::io::Write;
-                compiled_kernel.write_all(artifact.as_binary_u8()).unwrap();
+    fn is_kernel_fresh(&self) -> bool {
+        let tp = PathBuf::from(format!("kernels/templates/transpose-{}-template.comp", self.kernel_type));
+        let gp = PathBuf::from(format!("kernels/comp/{}.comp", self.kernel_name));
+        let sp = PathBuf::from(format!("kernels/spv/{}.spv", self.kernel_name));
 
-                compiled_kernel
+        if is_relatively_fresh(&tp, &gp) {
+            if is_relatively_fresh(&gp, &sp) {
+                return true;
             }
         }
+
+        false
     }
 
-    pub fn materialize_kernel(&self) -> String {
-        let tp = format!(
-            "kernels/templates/transpose-{}-template.comp",
-            self.kernel_type
-        );
+    fn gen_glsl(&self) -> String {
+        let dir = PathBuf::from("kernels/comp");
+        if !dir.exists() {
+            create_dir(&dir).unwrap();
+        }
+
+        let tp = format!("kernels/templates/transpose-{}-template.comp", self.kernel_type);
         let mut kernel = std::fs::read_to_string(&tp)
-            .expect(&format!("could not kernel template at path: {}", &tp));
+            .expect(&format!("could not find kernel template at path: {}", &tp));
 
         match self.kernel_type {
             KernelType::Threadgroup => {
@@ -118,10 +98,53 @@ impl Task {
             }
         }
 
-        #[cfg(debug_assertions)]
-        std::fs::write(format!("kernels/comp/{}.comp", self.kernel_name), &kernel).unwrap();
+        std::fs::write(format!("{}/{}.comp", dir.display(), self.kernel_name), &kernel).unwrap();
 
         kernel
+    }
+
+    fn gen_spirv(&self) -> std::fs::File {
+        let dir = PathBuf::from("kernels/spv");
+        if !dir.exists() {
+            create_dir(&dir).unwrap();
+        }
+
+        println!("compiling kernel {}...", self.kernel_name);
+        let glsl = self.gen_glsl();
+        let mut compiler = shaderc::Compiler::new().unwrap();
+        let mut options = shaderc::CompileOptions::new().unwrap();
+        options.set_target_env(
+            shaderc::TargetEnv::Vulkan,
+            ((1 as u32) << 22) | ((1 as u32) << 12),
+        );
+        let artifact = compiler
+            .compile_into_spirv(
+                &glsl,
+                shaderc::ShaderKind::Compute,
+                &format!("{}.glsl", self.kernel_name),
+                "main",
+                Some(&options),
+            )
+            .unwrap();
+        let mut compiled_kernel = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&format!("{}/{}.spv", dir.display(), self.kernel_name))
+            .unwrap();
+        use std::io::Write;
+        compiled_kernel.write_all(artifact.as_binary_u8()).unwrap();
+
+        compiled_kernel
+    }
+
+    pub fn compile_kernel(&self) -> std::fs::File {
+        if !self.is_kernel_fresh() {
+            self.gen_glsl();
+            self.gen_spirv()
+        } else {
+            OpenOptions::new().read(true).open(&format!("kernels/spv/{}.spv", &self.kernel_name)).unwrap()
+        }
     }
 
     pub fn delete_compiled_kernel(&self) {

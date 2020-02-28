@@ -1,6 +1,7 @@
 #version 450
 #define WORKGROUP_SIZE ~WG_SIZE~
 
+// this is a dummy change meant to change the file's modification time
 layout(local_size_x = WORKGROUP_SIZE, local_size_y = 32) in;
 
 layout(set = 0, binding = 0) buffer BM {
