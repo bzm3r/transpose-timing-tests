@@ -27,7 +27,7 @@ impl BitMatrix {
 
     pub fn new_corner() -> BitMatrix {
         let mut bm: [[bool; 32]; 32] = [[false; 32]; 32];
-        bm[0][0] = true;
+        bm[31][0] = true;
         BitMatrix(bm)
     }
 

@@ -1,6 +1,6 @@
 use std::fmt;
 use std::fmt::Write;
-use std::fs::{OpenOptions, create_dir};
+use std::fs::{create_dir, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use crate::file_utils::is_relatively_fresh;
@@ -63,7 +63,10 @@ impl Task {
     }
 
     fn is_kernel_fresh(&self) -> bool {
-        let tp = PathBuf::from(format!("kernels/templates/transpose-{}-template.comp", self.kernel_type));
+        let tp = PathBuf::from(format!(
+            "kernels/templates/transpose-{}-template.comp",
+            self.kernel_type
+        ));
         let gp = PathBuf::from(format!("kernels/comp/{}.comp", self.kernel_name));
         let sp = PathBuf::from(format!("kernels/spv/{}.spv", self.kernel_name));
 
@@ -82,7 +85,10 @@ impl Task {
             create_dir(&dir).unwrap();
         }
 
-        let tp = format!("kernels/templates/transpose-{}-template.comp", self.kernel_type);
+        let tp = format!(
+            "kernels/templates/transpose-{}-template.comp",
+            self.kernel_type
+        );
         let mut kernel = std::fs::read_to_string(&tp)
             .expect(&format!("could not find kernel template at path: {}", &tp));
 
@@ -98,7 +104,11 @@ impl Task {
             }
         }
 
-        std::fs::write(format!("{}/{}.comp", dir.display(), self.kernel_name), &kernel).unwrap();
+        std::fs::write(
+            format!("{}/{}.comp", dir.display(), self.kernel_name),
+            &kernel,
+        )
+        .unwrap();
 
         kernel
     }
@@ -143,7 +153,10 @@ impl Task {
             self.gen_glsl();
             self.gen_spirv()
         } else {
-            OpenOptions::new().read(true).open(&format!("kernels/spv/{}.spv", &self.kernel_name)).unwrap()
+            OpenOptions::new()
+                .read(true)
+                .open(&format!("kernels/spv/{}.spv", &self.kernel_name))
+                .unwrap()
         }
     }
 
@@ -190,14 +203,12 @@ impl fmt::Display for Task {
 pub struct NumCpuExecs(pub u32);
 #[derive(Clone, Copy)]
 pub struct NumGpuExecs(pub u32);
-#[derive(Clone, Copy)]
-pub struct SubgroupSizeLog2(pub u32);
 
 pub enum TaskGroupDefn {
     Threadgroup(NumCpuExecs, NumGpuExecs),
-    Shuffle(NumCpuExecs, NumGpuExecs, SubgroupSizeLog2),
+    Shuffle(NumCpuExecs, NumGpuExecs),
     HybridShuffle(NumCpuExecs, NumGpuExecs),
-    Ballot(NumCpuExecs, NumGpuExecs, SubgroupSizeLog2)
+    Ballot(NumCpuExecs, NumGpuExecs),
 }
 
 pub struct TaskGroup {

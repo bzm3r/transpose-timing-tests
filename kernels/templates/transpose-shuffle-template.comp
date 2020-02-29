@@ -45,9 +45,10 @@ void main() {
     // gl_SubgroupID gives us the ID of the subgroup this invocation is in, within the workgroup.
     // Finally, if gl_SubgroupSize > 32, then (gl_SubgroupInvocationID >> 5) gives us the matrix ID within the subgroup.
 
-    const uint mats_per_sg = gl_SubgroupSize >> 5;
-    const uint log2_sg_size = findMSB(gl_SubgroupSize);
-    const uint sgs_per_wg = gl_WorkGroupSize.x >> log2_sg_size;
+    uint sg_size = min(gl_SubgroupSize, gl_WorkGroupSize.x);
+    uint mats_per_sg = sg_size >> 5;
+    uint log2_sg_size = findMSB(sg_size);
+    uint sgs_per_wg = gl_WorkGroupSize.x >> log2_sg_size;
     uint global_bm_ix = sgs_per_wg*mats_per_sg*gl_WorkGroupID.x + mats_per_sg*gl_SubgroupID + (gl_SubgroupInvocationID >> 5);
 
     if (global_bm_ix < u_consts.num_bms) {

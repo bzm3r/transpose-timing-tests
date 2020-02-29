@@ -12,9 +12,7 @@ extern crate gfx_hal as hal;
 extern crate shaderc;
 
 use crate::bitmats::BitMatrix;
-use crate::task::{
-    KernelType, NumCpuExecs, NumGpuExecs, SubgroupSizeLog2, Task, TaskGroup, TaskGroupDefn,
-};
+use crate::task::{KernelType, NumCpuExecs, NumGpuExecs, Task, TaskGroup, TaskGroupDefn};
 use hal::{
     adapter::{Adapter, MemoryProperties, MemoryType},
     buffer, command, memory, pool,
@@ -139,7 +137,6 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let device = &gpu.device;
         let queue_group = gpu.queue_groups.first_mut().unwrap();
 
-        //let test_bm: [u32; 32] = [305416560, 1229584932, 2756536303, 4060742777, 4182705392, 2186331296, 2135740396, 2054503818, 967523107, 1193470501, 4085384340, 4267063270, 3256387385, 1292916830, 2745807480, 2891425733, 2732819558, 2218219662, 2447098721, 973566348, 3928452117, 129779629, 576160859, 1223581544, 2599797927, 3616619526, 3200710431, 2975536349, 758187906, 3931020116, 2744172146, 3574783686];
         let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|i| BitMatrix::new_random()).collect();
         let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
         let mut flat_raw_bms: Vec<u32> = Vec::new();
@@ -426,10 +423,10 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     })
                     .collect();
 
-                // for i in 0..5 {
+                // for i in 0..2 {
                 //     println!("input bm {}: {}", i, &bms[i]);
                 //     println!("rbm {}: {}", i, &result_bms[i]);
-                //     println!("expected {}: {}", i, bms[i].transpose());
+                //     //println!("expected {}: {}", i, bms[i].transpose());
                 // }
 
                 for (i, (bm, rbm)) in bms.iter().zip(result_bms.iter()).enumerate() {
@@ -583,15 +580,17 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     },
                 })
             }
-            TaskGroupDefn::Shuffle(nce, nge, sg_size) | TaskGroupDefn::Ballot(nce, nge, sg_size) => {
+            TaskGroupDefn::Shuffle(nce, nge) | TaskGroupDefn::Ballot(nce, nge) => {
                 let kernel_type = match task_group_defn {
-                    TaskGroupDefn::Shuffle(_, _, _) => KernelType::Shuffle,
-                    TaskGroupDefn::Ballot(_, _, _) => KernelType::Ballot,
+                    TaskGroupDefn::Shuffle(_, _) => KernelType::Shuffle,
+                    TaskGroupDefn::Ballot(_, _) => KernelType::Ballot,
                     _ => unreachable!(),
                 };
 
                 if is_intel(&self.device_name).unwrap() {
-                    println!("Detected Intel device, skipping creation of subgroup kernel task group.");
+                    println!(
+                        "Detected Intel device, skipping creation of subgroup kernel task group."
+                    );
                     None
                 } else {
                     let task_group_prefix = format!("{}-{}", self.backend, kernel_type);
@@ -603,7 +602,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                         tasks: {
                             let mut tasks = Vec::<Task>::new();
 
-                            for n in sg_size.0..11 {
+                            for n in 5..11 {
                                 let num_threads = 2u32.pow(n);
                                 for num_bms in (0u32..15).map(|u| 2u32.pow(u)) {
                                     tasks.push(Task {
@@ -617,9 +616,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                         instant_times: vec![],
                                         kernel_name: format!(
                                             "transpose-{}-WGS=({},{})",
-                                            kernel_type,
-                                            num_threads,
-                                            1
+                                            kernel_type, num_threads, 1
                                         ),
                                         kernel_type,
                                     })
@@ -632,43 +629,41 @@ impl<B: hal::Backend> GpuTestEnv<B> {
             }
             TaskGroupDefn::HybridShuffle(nce, nge) => {
                 let task_group_prefix = format!("{}-{}", self.backend, KernelType::HybridShuffle);
-                Some(
-                    TaskGroup {
-                        name: format!("{}-{}", &task_group_prefix, self.device_name),
-                        num_gpu_execs: nge,
-                        num_cpu_execs: nce,
-                        kernel_type: KernelType::HybridShuffle,
-                        tasks: {
-                            let mut tasks = Vec::<Task>::new();
+                Some(TaskGroup {
+                    name: format!("{}-{}", &task_group_prefix, self.device_name),
+                    num_gpu_execs: nge,
+                    num_cpu_execs: nce,
+                    kernel_type: KernelType::HybridShuffle,
+                    tasks: {
+                        let mut tasks = Vec::<Task>::new();
 
-                            for n in 5u32..11 {
-                                let num_threads = 2u32.pow(n);
-                                // can't go from 0 to 15 yet due to hybrid shuffle kernel issues (see branch barrier-weirdness)
-                                for num_bms in ((n - 5)..15).map(|u| 2u32.pow(u)) {
-                                    tasks.push(Task {
-                                        name: format!(
-                                            "{}-NBMS={}-WGS=({},{})",
-                                            &task_group_prefix, num_bms, num_threads, 1
-                                        ),
-                                        num_bms,
-                                        workgroup_size: [num_threads, 1],
-                                        timestamp_query_times: vec![],
-                                        instant_times: vec![],
-                                        kernel_name: format!(
-                                            "transpose-{}-WGS=({},{})",
-                                            KernelType::HybridShuffle,
-                                            num_threads,
-                                            1
-                                        ),
-                                        kernel_type: KernelType::HybridShuffle,
-                                    })
-                                }
+                        for n in 5u32..11 {
+                            let num_threads = 2u32.pow(n);
+                            // can't go from 0 to 15 yet due to hybrid shuffle kernel issues (see branch barrier-weirdness)
+                            for num_bms in ((n - 5)..15).map(|u| 2u32.pow(u)) {
+                                tasks.push(Task {
+                                    name: format!(
+                                        "{}-NBMS={}-WGS=({},{})",
+                                        &task_group_prefix, num_bms, num_threads, 1
+                                    ),
+                                    num_bms,
+                                    workgroup_size: [num_threads, 1],
+                                    timestamp_query_times: vec![],
+                                    instant_times: vec![],
+                                    kernel_name: format!(
+                                        "transpose-{}-WGS=({},{})",
+                                        KernelType::HybridShuffle,
+                                        num_threads,
+                                        1
+                                    ),
+                                    kernel_type: KernelType::HybridShuffle,
+                                })
                             }
+                        }
 
-                            tasks
-                        },
-                    }
-                )
+                        tasks
+                    },
+                })
             }
         }
     }
@@ -840,8 +835,8 @@ fn vk_get_timestamp_period(device_name: &str) -> Result<f64, String> {
 
 pub fn is_intel(device_name: &str) -> Result<bool, String> {
     match device_name {
-        NVIDIA_GTX_1060 | NVIDIA_RTX_2060 | AMD_RADEON_RX570 => {Ok(false)}
-        INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => {Ok(true)}
+        NVIDIA_GTX_1060 | NVIDIA_RTX_2060 | AMD_RADEON_RX570 => Ok(false),
+        INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => Ok(true),
         _ => Err(String::from("Unknown device.")),
     }
 }

@@ -7,12 +7,12 @@ import os
 print("Please update known GPU info in plot.py if possible!")
 # (gpu name, abbreviation, optimal tg size, line colour)
 gpu_info = [("GeForce GTX 1060", "NVD GTX 1060", '#f80606'),
-            ("GeForce RTX 2060", "NVD RTX 2060", '#25871e'),
+            ("GeForce RTX 2060", "NVD RTX 2060", '#f77304'),
             ("Intel(R) HD Graphics 630", "INT HD 630", '#0646f8'),
             ("Intel(R) Ivybridge Mobile", "INT IVYMOB 630", '#be06f8'),
             ("Intel(R) Iris(TM) Plus Graphics 640", "INT Iris 640", '#06f8e5'),
             ("Intel(R) HD Graphics 520", "INT HD 520", '#850f86'),
-            ("Radeon RX 570 Series", "AMD RX 570", '#08f806'),
+            ("Radeon RX 570 Series", "AMD RX 570", '#3c8521'),
             ]
 
 knowns = [g[0] for g in gpu_info]
@@ -126,10 +126,15 @@ def plot_varying_tg_using_gpu_queries(timing_results):
     ax.set_xlabel("threadgroup size")
     ax.set_xticks([2 ** n for n in range(5, 11)])
     ax.set_ylabel("transpose/sec")
-    ax.legend(loc="best")
+    # Shrink current axis by 20%
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+    
+    # Put a legend to the right of the current axis
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results, num BMs={}".format(timing_results[0].fixed_bm_size))
-    fig.set_size_inches(11, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-tgs-gpu-queries.png"))
+    fig.set_size_inches(14, 8.5)
+    fig.savefig(os.path.join(cwd, "plot-varying-tgs-gpu-queries.png"), bbox_inches="tight")
 
 
 def plot_varying_tg_using_cpu_queries(timing_results):
@@ -147,10 +152,15 @@ def plot_varying_tg_using_cpu_queries(timing_results):
     ax.set_xlabel("threadgroup size")
     ax.set_xticks([2 ** n for n in range(5, 11)])
     ax.set_ylabel("transpose/sec")
-    ax.legend(loc="best")
+    # Shrink current axis by 20%
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+    
+    # Put a legend to the right of the current axis
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("CPU timing query results, num BMs={}".format(timing_results[0].fixed_bm_size))
-    fig.set_size_inches(11, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-tgs-cpu-queries.png"))
+    fig.set_size_inches(14, 8.5)
+    fig.savefig(os.path.join(cwd, "plot-varying-tgs-cpu-queries.png"), bbox_inches="tight")
 
 def plot_varying_tg_using_gpu_queries_with_cpu_query_fallback(timing_results):
     plt.rcParams.update({'font.size': 16})
@@ -172,10 +182,15 @@ def plot_varying_tg_using_gpu_queries_with_cpu_query_fallback(timing_results):
     ax.set_xlabel("threadgroup size")
     ax.set_xticks([2 ** n for n in range(5, 11)])
     ax.set_ylabel("transpose/sec")
-    ax.legend(loc="best")
+    # Shrink current axis by 20%
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+    
+    # Put a legend to the right of the current axis
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results (w/ CPU fallback)")
-    fig.set_size_inches(11, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-nds-fallback-queries.png"))
+    fig.set_size_inches(14, 8.5)
+    fig.savefig(os.path.join(cwd, "plot-varying-nds-fallback-queries.png"), bbox_inches="tight")
 
 
 def plot_varying_nd_using_gpu_queries(timing_results):
@@ -192,10 +207,15 @@ def plot_varying_nd_using_gpu_queries(timing_results):
 
     ax.set_xlabel("num bms uploaded")
     ax.set_ylabel("transpose/sec")
-    ax.legend(loc="best")
+    # Shrink current axis by 20%
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+    
+    # Put a legend to the right of the current axis
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results")
-    fig.set_size_inches(11, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-nds-gpu-queries.png"))
+    fig.set_size_inches(14, 8.5)
+    fig.savefig(os.path.join(cwd, "plot-varying-nds-gpu-queries.png"), bbox_inches="tight")
 
 
 def plot_varying_nd_using_cpu_queries(timing_results):
@@ -212,10 +232,15 @@ def plot_varying_nd_using_cpu_queries(timing_results):
 
     ax.set_xlabel("num bms uploaded   ")
     ax.set_ylabel("transpose/sec")
-    ax.legend(loc="best")
+    # Shrink current axis by 20%
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+    
+    # Put a legend to the right of the current axis
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("CPU timing query results")
-    fig.set_size_inches(11, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-nds-cpu-queries.png"))
+    fig.set_size_inches(14, 8.5)
+    fig.savefig(os.path.join(cwd, "plot-varying-nds-cpu-queries.png"), bbox_inches="tight")
 
 
 def plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(timing_results):
@@ -237,10 +262,15 @@ def plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(timing_results):
 
     ax.set_xlabel("num bms uploaded")
     ax.set_ylabel("transpose/sec")
-    ax.legend(loc="best")
+    # Shrink current axis by 20%
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+    
+    # Put a legend to the right of the current axis
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results (w/ CPU fallback)")
-    fig.set_size_inches(11, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-nds-fallback-queries.png"))
+    fig.set_size_inches(14, 8.5)
+    fig.savefig(os.path.join(cwd, "plot-varying-nds-fallback-queries.png"), bbox_inches="tight")
 
 
 plot_varying_tg_using_gpu_queries(trs)

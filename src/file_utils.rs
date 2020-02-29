@@ -1,5 +1,5 @@
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 pub fn is_relatively_fresh(base: &Path, other: &Path) -> bool {
     if base.exists() && other.exists() {
@@ -12,5 +12,3 @@ pub fn is_relatively_fresh(base: &Path, other: &Path) -> bool {
     }
     false
 }
-
-

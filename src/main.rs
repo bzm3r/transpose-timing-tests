@@ -10,12 +10,12 @@ extern crate gfx_backend_metal as Metal;
 extern crate gfx_hal as hal;
 
 mod bitmats;
+mod file_utils;
 mod gpu;
 mod task;
-mod file_utils;
 
 use gpu::GpuTestEnv;
-use task::{NumCpuExecs, NumGpuExecs, SubgroupSizeLog2, TaskGroupDefn};
+use task::{NumCpuExecs, NumGpuExecs, TaskGroupDefn};
 
 fn main() {
     #[cfg(debug_assertions)]
@@ -29,71 +29,36 @@ fn main() {
     let num_gpu_execs: u32 = 1001;
 
     #[cfg(feature = "vk")]
-    {
-        let mut test_env = GpuTestEnv::<Vulkan::Backend>::vulkan();
-
-        test_env.set_task_group(TaskGroupDefn::Threadgroup(
-            NumCpuExecs(num_cpu_execs),
-            NumGpuExecs(num_gpu_execs),
-        ));
-        test_env.time_task_group();
-        test_env.save_results();
-
-        test_env.set_task_group(TaskGroupDefn::HybridShuffle(
-            NumCpuExecs(num_cpu_execs),
-            NumGpuExecs(num_gpu_execs),
-        ));
-        test_env.time_task_group();
-        test_env.save_results();
-
-        test_env.set_task_group(TaskGroupDefn::Ballot(
-            NumCpuExecs(num_cpu_execs),
-            NumGpuExecs(num_gpu_execs),
-            SubgroupSizeLog2(6),
-        ));
-        test_env.time_task_group();
-        test_env.save_results();
-
-        test_env.set_task_group(TaskGroupDefn::Shuffle(
-            NumCpuExecs(num_cpu_execs),
-            NumGpuExecs(num_gpu_execs),
-            SubgroupSizeLog2(6),
-        ));
-        test_env.time_task_group();
-        test_env.save_results();
-    }
+    let mut test_env = GpuTestEnv::<Vulkan::Backend>::vulkan();
 
     #[cfg(feature = "metal")]
-    {
-        let mut test_env = GpuTestEnv::<Metal::Backend>::metal();
-        test_env.set_task_group(TaskGroupDefn::Threadgroup(
-            NumCpuExecs(num_cpu_execs),
-            NumGpuExecs(num_gpu_execs),
-        ));
-        test_env.time_task_group();
-        test_env.save_results();
+    let mut test_env = GpuTestEnv::<Metal::Backend>::metal();
 
-        test_env.set_task_group(TaskGroupDefn::HybridShuffle(
-            NumCpuExecs(num_cpu_execs),
-            NumGpuExecs(num_gpu_execs),
-        ));
-        test_env.time_task_group();
-        test_env.save_results();
+    test_env.set_task_group(TaskGroupDefn::Threadgroup(
+        NumCpuExecs(num_cpu_execs),
+        NumGpuExecs(num_gpu_execs),
+    ));
+    test_env.time_task_group();
+    test_env.save_results();
 
-        test_env.set_task_group(TaskGroupDefn::Ballot(
-            NumCpuExecs(num_cpu_execs),
-            NumGpuExecs(num_gpu_execs),
-            SubgroupSizeLog2(6),
-        ));
-        test_env.time_task_group();
-        test_env.save_results();
+    test_env.set_task_group(TaskGroupDefn::HybridShuffle(
+        NumCpuExecs(num_cpu_execs),
+        NumGpuExecs(num_gpu_execs),
+    ));
+    test_env.time_task_group();
+    test_env.save_results();
 
-        test_env.set_task_group(TaskGroupDefn::Shuffle(
-            NumCpuExecs(num_cpu_execs),
-            NumGpuExecs(num_gpu_execs),
-            SubgroupSizeLog2(6),
-        ));
-        test_env.time_task_group();
-        test_env.save_results();
-    }
+    test_env.set_task_group(TaskGroupDefn::Ballot(
+        NumCpuExecs(num_cpu_execs),
+        NumGpuExecs(num_gpu_execs),
+    ));
+    test_env.time_task_group();
+    test_env.save_results();
+
+    test_env.set_task_group(TaskGroupDefn::Shuffle(
+        NumCpuExecs(num_cpu_execs),
+        NumGpuExecs(num_gpu_execs),
+    ));
+    test_env.time_task_group();
+    test_env.save_results();
 }
