@@ -8,7 +8,7 @@ The bit matrix transposition problem can be addressed, broadly speaking, with tw
 
 In general, we will see that the SIMD class of programs will outperform threadgroup-based programs. However, we will also see that the timing results reveal much about the underlying GPU hardware.
 
-### Introduction to SIMD
+## Introduction to SIMD
 
 In 1966, Michael J. Flynn proposed a classification of computer architectures which is eponymously referred to as "Flynn's taxonomy". There are four categories in this classification:
 * Single Instruction stream, Single Data stream (SISD)
@@ -24,7 +24,7 @@ MISD, and MIMD should be relatively straightforward to understand from the defin
 
 Flynn's taxonomy will not be considered useful in this article beyond providing an understanding of what is meant by SIMD. 
 
-### Introduction to Threadgroups and Subgroups
+## Introduction to Threadgroups and Subgroups
 
 Modern GPU hardware is not only complex, but many of the relevant details are also closed-source. Thus, to understand understand program performance, programmers must rely on abstractions of this hardware. These abstractions in turn are strongly influenced by APIs (e.g. OpenGL or Vulkan) specifying the interaction between hardware and application.
 
@@ -46,7 +46,7 @@ One level up in the hierarchy, we have threadgroups, which can be profitably und
 
 On the top, we have global memory, which unlike the lower levels in the hierarchy, uses capacitors (DRAM) as storage elements. Global memory is accessible to all threadgroups on a device, but its performance characters mean that two threadgroups cannot communicate with each other on useful timescales. If the threads within a threadgroup can pass send messages to each other with a day's delay, it may take up to 10 days for messages to pass between threadgroups. You wouldn't want to have your threads sitting around, twiddling their thumbs, in that time, and thus design your programs to minimize dependency on inter-threadgroup communication. 
 
-### Transposing bit matrices
+## Transposing bit matrices
 
 Before we jump into using our new-found understanding of threadgroups and subgroups to start kernels which transpose bit matrices, let us discuss how bit matrices will be reprsented in memory, and the general concept of the transposition algorithm for bit matrices.
 
@@ -67,7 +67,7 @@ Once again, blocks of the same colour are swapped with each other, giving us a n
 
 For some hand-built intuition, start with a 4x4 matrix, labelled `M_4`. By hand, write down its transposition, and label that `T`. Produce `M_2` from `M_4`, and then `M_1` from `M_2`. Confirm that `M_1` and `T` are the same.  
 
-### Parellelizing the recursive transposition algorithm. 
+## Parellelizing the recursive transposition algorithm. 
 
 Note that when you are generating `M_16` from `M_32`, the `i`th row of `M_16` will depend upon the `(i + 16) % 32` row of `M_32`. When `0 <= i < 16`, `M_16[i] = M_32[i + 16] << 16 | M_32[i + 16] >> 16` (i.e. the first 16 bits of `M_32[i + 16]`) become the last 16 bits of `M_16[i]`, and the last 16 bits of `M_32[i + 16]` become the first 16 bits of `M_16[i]`. 
 
@@ -90,7 +90,7 @@ The Shuffle+Threadgroup hybrid kernel generates `M_16` and `M_8` using threadgro
 
 The SIMD ballot kernel uses a much simpler algorithm: for the `i`th row, it asks for the `i`th bit of all the processors (from `0` to `31`) inclusive (i.e. it effectively computes the `i`th column using the `subgroupBallot` operation). It stores the result as the row of the transposed matrix.
 
-### Why bother with SIMD (subgroups)?
+## Why bother with SIMD (subgroups)?
 
 Apart from the fact that the parallelization of the bit matrix transposition algorithm presented had a distinctly "Single Instruction Multiple Data" flavour to it, why else would we bother using subgroups?
 
@@ -98,21 +98,38 @@ The answer is: better performance. In the threadgroup kernel, a bit matrix is lo
 
 On the other hand, in the shuffle kernel, a bit matrix (or two, if you are using an AMD machine with a subgroup size of 64) is loaded into the *fast* subroup-level registers. Lanes within the subgroup need not look up the data they need from threadgroup shared memory, but instead can take advantage of the close connection they have to the other registers in their subgroup. 
 
-### Results
+## Results
 
 In the first experiment, the number of bit matrices uploaded is held constant, while the size of the threadgroup is changed between 32 (2<sup>5</sup>) and 1024 (2<sup>10</sup>):
 
 ![](https://i.imgur.com/FVdHRQM.png)
 
-**Intel HD 520.** The shuffle and ballot kernels cannot be run on this device since they require a minimum subgroup size of 32, but it is not straightforward to force a subgroup size of 32 on Intel. It is worth noting that `gl_SubgroupSize` is  `32` on this device, even though the actual subgroup size can vary; thus, `gl_SubgroupSize` seems to give the maximum subgroup size a device can provide, rather than the actual subgroup size being provided. Although we cannot run the shuffle kernel, we can run a hybrid shuffle+threadgroup kernel, where `M_16` and `M_8` are generated using a threadgroup kernel, but `M_4` and below are generated using a subgroup kernel---note the mild performance improvement in the hybrid kernel. Key observations for Intel HD 520:
+### Intel HD 520
+
+(References: [WikiChip](https://en.wikichip.org/wiki/intel/microarchitectures/gen9#Gen9))
+
+This is a Skylake series chip released in 2015. This GPU utilizes the **Gen9 GT2** microarchitecture, which has two major components: the **Slice**, and the **Unslice**. The Slice is the computational heart of the GPU as it contains the computing units. The Unslice is essentially the interface between the Slice, and the outside world, although it does have some fixed function capabilities of its own; that is, it contains some specialized non-programmable hardware to execute common graphics related tasks. Importantly, the Unslice contains hardware which controlling the dispatch of instructions to the Slice.   
+
+Each slice in a Gen9 GT2 architecture consists of 3 **subslices**, each with 8 **execution units**. An execution unit has access to 128 32-byte SIMD-8 registers. Let's unpack what "128 32-byte SIMD-8 registers" means: there are 128 registers, each of size 32 bytes. These 32 bytes are divided into 8 addressable elements (i.e. elements which can be referred to using a pointer). Note that (32 bytes)/(8 elements) = (4 bytes per element), so each element is (4 bytes)x(8 bits per byte) = (32 bits) wide. These 8 elements together form a "SIMD-8 vector". [Section 5.3.0](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf)
+
+An execution unit has 7 "threads". There is terminology overload here, since an Intel Gen9 thread *is not* the same as an abstract GPU thread making up a threadgroup. Therefore, to be careful, we will say that each execution unit has 7 "Gen9-threads". Furthermore, since each Gen9-thread is an instruction stream, we will choose to refer to them simply as such. Every clock cycle, the execution unit's **Gen-9 thread arbiter** can select up to 4 out of the 7 instruction streams from which to read instructions. 
+
+An execution unit has 2 SIMD "floating point units" (FPUs), computation units which, contrary to their name, support both floating point and integer operations [Section 5.3.2](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf). 
+
+The shuffle and ballot kernels cannot be run on this device since they require a minimum subgroup size of 32, but it is not straightforward to force a subgroup size of 32 on Intel. It is worth noting that `gl_SubgroupSize` is  `32` on this device, even though the actual subgroup size can vary; thus, `gl_SubgroupSize` seems to give the maximum subgroup size a device can provide, rather than the actual subgroup size being provided. Although we cannot run the shuffle kernel, we can run a hybrid shuffle+threadgroup kernel, where `M_16` and `M_8` are generated using a threadgroup kernel, but `M_4` and below are generated using a subgroup kernel---note the mild performance improvement in the hybrid kernel. Key observations for the Intel HD 520:
 
 | Observation  | Analysis |
 | ------------- | ------------- |
-| **threadgroup kernel:** a threadgroup size of 64 (2<sup>6</sup>) provides the optimal transpose rate when using a threadgroup kernel, but increasing the threadgroup size beyond this decreases performance, becoming worst at a threadgroup size of 512 (2<sup>9</sup>) | ?  |
-| **threadgroup kernel:** performance at threadgroup sizes of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) is the same | ?  |
-| **hybrid-shuffle kernel:** has mildly better performance than the threadgroup kernel | ?  |
-| **hybrid-shuffle kernel:** performance is generally insensitive to threadgroup size, but begins to drop off at a size of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) | ? |
+| **threadgroup kernel:** a TG size of 64 (2<sup>6</sup>) provides the optimal transpose rate when using a TG kernel, but increasing the TG size beyond this decreases performance exponentially, reaching its worst at a size of 512 (2<sup>9</sup>) | ?  |
+| **threadgroup kernel:** performance at TG sizes of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) is the same | ?  |
+| **hybrid-shuffle kernel:** has mildly better performance than the TG kernel | ?  |
+| **hybrid-shuffle kernel:** performance is essentially insensitive to TG size, but begins to drop off noticeably at TG sizes of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) | ? |
 
-* 
-* 
+**AMD RX 570.** It is important to note than on AMD devices such as the RX 570, there are 64 lanes in a subgroup. Key observations for the AMD RX 570:
 
+| Observation  | Analysis |
+| ------------- | ------------- |
+| **threadgroup kernel:** a TG size of 64 (2<sup>6</sup>) provides the optimal transpose rate when using a TG kernel, but increasing the TG size beyond this decreases performance exponentially | ?  |
+| **threadgroup kernel:** performance at a TG size of 32 (2<sup>5</sup>) is noticeably worse than performance at a TG size of 64 (2<sup>6</sup>) | ?  |
+| **hybrid-shuffle kernel:** has mildly better performance than the TG kernel | ?  |
+| **hybrid-shuffle kernel:** performance is essentially insensitive to TG size, but begins to drop off noticeably at TG sizes of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) | ? |
