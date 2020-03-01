@@ -98,3 +98,9 @@ The answer is: better performance. In the threadgroup kernel, a bit matrix is lo
 
 On the other hand, in the shuffle kernel, a bit matrix (or two, if you are using an AMD machine with a subgroup size of 64) is loaded into the *fast* subroup-level registers. Lanes within the subgroup need not look up the data they need from threadgroup shared memory, but instead can take advantage of the close connection they have to the other registers in their subgroup. 
 
+### Results
+
+In the first experiment, the number of bit matrices uploaded is held constant, while the size of the threadgroup is changed between 32 (2<sup>5</sup>) and 1024 (2<sup>10</sup>):
+
+![](https://i.imgur.com/FVdHRQM.png)
+
