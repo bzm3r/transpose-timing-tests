@@ -104,3 +104,15 @@ In the first experiment, the number of bit matrices uploaded is held constant, w
 
 ![](https://i.imgur.com/FVdHRQM.png)
 
+**Intel HD 520.** The shuffle and ballot kernels cannot be run on this device since they require a minimum subgroup size of 32, but it is not straightforward to force a subgroup size of 32 on Intel. It is worth noting that `gl_SubgroupSize` is  `32` on this device, even though the actual subgroup size can vary; thus, `gl_SubgroupSize` seems to give the maximum subgroup size a device can provide, rather than the actual subgroup size being provided. Although we cannot run the shuffle kernel, we can run a hybrid shuffle+threadgroup kernel, where `M_16` and `M_8` are generated using a threadgroup kernel, but `M_4` and below are generated using a subgroup kernel---note the mild performance improvement in the hybrid kernel. Key observations for Intel HD 520:
+
+| Observation  | Analysis |
+| ------------- | ------------- |
+| **threadgroup kernel:** a threadgroup size of 64 (2<sup>6</sup>) provides the optimal transpose rate when using a threadgroup kernel, but increasing the threadgroup size beyond this decreases performance, becoming worst at a threadgroup size of 512 (2<sup>9</sup>) | ?  |
+| **threadgroup kernel:** performance at threadgroup sizes of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) is the same | ?  |
+| **hybrid-shuffle kernel:** has mildly better performance than the threadgroup kernel | ?  |
+| **hybrid-shuffle kernel:** performance is generally insensitive to threadgroup size, but begins to drop off at a size of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) | ? |
+
+* 
+* 
+
