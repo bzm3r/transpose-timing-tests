@@ -25,6 +25,17 @@ kernel_line_styles = dict([("shuffle", "-"), ("ballot", "--"), ("hybrid shuffle"
 cwd = os.getcwd()
 dat_files = [f for f in os.listdir(cwd) if os.path.splitext(f)[1] == ".dat"]
 
+def maximally_utilized(wg_x, wg_y, num_bms):
+    wg_size = wg_x*wg_y
+    num_mats_per_wg = wg_size/32
+    return num_bms > num_mats_per_wg
+
+def total_threads_dispatched(wg_x, wg_y, num_bms):
+    wg_size = wg_x*wg_y
+    num_mats_per_wg = wg_size / 32
+    num_dispatches = int(np.ceil(num_bms/num_mats_per_wg))
+    print("num_bms: {} | wg_size: {}, {} | num_mats_per_wg: {} | num_dispatches: {} | num_threads: {}".format(num_bms, wg_x, wg_y, num_mats_per_wg, num_dispatches, wg_size*num_dispatches))
+    return wg_size * num_dispatches
 
 class TimingResults:
     def __init__(self, results_dir, file_name):
@@ -54,7 +65,7 @@ class TimingResults:
         self.dat = dict()
 
         for i in range(1, len(r), 3):
-            # workgroup size x, workgroup size y, num bms uploaded
+            # workgroup size x, workgroup size y, num bms
             key = tuple([int(x) for x in r[i]])
             ts = [float(x) for x in r[i + 1]]
             insts = [float(x) for x in r[i + 2]]
@@ -74,7 +85,7 @@ class TimingResults:
         if np.average([x[1][0] for x in self.dat_ts_avg_std.items()]) < 1.0:
             self.fallback_mode = "CPU"
 
-        self.fixed_bm_size = 4096
+        self.fixed_bm_size = 2**14
         self.dat_ts_sorted_by_tgs = sorted([(k[0]*k[1], v) for k, v in self.dat_ts_avg_std.items() if k[2] == self.fixed_bm_size],
                                            key=lambda x: x[0])
         self.dat_insts_sorted_by_tgs = sorted([(k[0]*k[1], v) for k, v in self.dat_ts_avg_std.items() if k[2] == self.fixed_bm_size],
@@ -89,10 +100,13 @@ class TimingResults:
         else:
             opt_tg_vector = max(self.dat_insts_avg_std.items(), key=lambda x: x[1][0])[0]
         self.opt_tg = opt_tg_vector[0]*opt_tg_vector[1]
+
+        print("{} | {}".format(self.gpu, self.kernel))
         self.dat_ts_sorted_by_nd = sorted(
-            [(k[2], v) for k, v in self.dat_ts_avg_std.items() if k[0] * k[1] == self.opt_tg], key=lambda x: x[0])
+            [(total_threads_dispatched(k[0], k[1], k[2]), v) for k, v in self.dat_ts_avg_std.items() if k[0] * k[1] == self.opt_tg and maximally_utilized(k[0], k[1], k[2])], key=lambda x: x[0])
         self.dat_insts_sorted_by_nd = sorted(
-            [(k[2], v) for k, v in self.dat_insts_avg_std.items() if k[0] * k[1] == self.opt_tg], key=lambda x: x[0])
+            [(total_threads_dispatched(k[0], k[1], k[2]), v) for k, v in self.dat_insts_avg_std.items() if k[0] * k[1] == self.opt_tg and maximally_utilized(k[0], k[1], k[2])], key=lambda x: x[0])
+        print("=============")
 
         self.xs_nd = [tup[0] for tup in self.dat_ts_sorted_by_nd]
         self.yts_nd = [tup[1] for tup in self.dat_ts_sorted_by_nd]
@@ -126,6 +140,8 @@ def plot_varying_tg_using_gpu_queries(timing_results):
     ax.set_xlabel("threadgroup size")
     ax.set_xticks([2 ** n for n in range(5, 11)])
     ax.set_ylabel("transpose/sec")
+    ax.set_xscale("log", basex=2)
+    ax.set_yscale("log", basey=10)
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
@@ -152,6 +168,8 @@ def plot_varying_tg_using_cpu_queries(timing_results):
     ax.set_xlabel("threadgroup size")
     ax.set_xticks([2 ** n for n in range(5, 11)])
     ax.set_ylabel("transpose/sec")
+    ax.set_xscale("log", basex=2)
+    ax.set_yscale("log", basey=10)
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
@@ -182,6 +200,8 @@ def plot_varying_tg_using_gpu_queries_with_cpu_query_fallback(timing_results):
     ax.set_xlabel("threadgroup size")
     ax.set_xticks([2 ** n for n in range(5, 11)])
     ax.set_ylabel("transpose/sec")
+    ax.set_xscale("log", basex=2)
+    ax.set_yscale("log", basey=10)
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
@@ -205,8 +225,10 @@ def plot_varying_nd_using_gpu_queries(timing_results):
                     marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style
                     )
 
-    ax.set_xlabel("num bms uploaded")
+    ax.set_xlabel("theoretical num threads dispatched")
     ax.set_ylabel("transpose/sec")
+    ax.set_xscale("log", basex=2)
+    ax.set_yscale("log", basey=10)
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
@@ -230,8 +252,10 @@ def plot_varying_nd_using_cpu_queries(timing_results):
                     marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style
                     )
 
-    ax.set_xlabel("num bms uploaded   ")
+    ax.set_xlabel("theoretical num threads dispatched")
     ax.set_ylabel("transpose/sec")
+    ax.set_xscale("log", basex=2)
+    ax.set_yscale("log", basey=10)
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
@@ -260,8 +284,10 @@ def plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(timing_results):
                     marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style
                     )
 
-    ax.set_xlabel("num bms uploaded")
+    ax.set_xlabel("theoretical num threads dispatched")
     ax.set_ylabel("transpose/sec")
+    ax.set_xscale("log", basex=2)
+    ax.set_yscale("log", basey=10)
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])

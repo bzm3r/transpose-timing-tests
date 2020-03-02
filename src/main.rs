@@ -25,8 +25,8 @@ fn main() {
         panic!("no backend loaded! `cargo run --features X`, where X is one of vk, dx12 or metal");
     }
 
-    let num_cpu_execs: u32 = 101;
-    let num_gpu_execs: u32 = 1001;
+    let num_cpu_execs: u32 = 11;
+    let num_gpu_execs: u32 = 10001;
 
     #[cfg(feature = "vk")]
     let mut test_env = GpuTestEnv::<Vulkan::Backend>::vulkan();

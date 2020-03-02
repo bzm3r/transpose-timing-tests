@@ -306,14 +306,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let fence = device.create_fence(false).unwrap();
 
         let kernel_type = &task.kernel_type;
-        let num_dispatch_groups = match kernel_type {
-            KernelType::Threadgroup => {
-                (task.num_bms + task.workgroup_size[0] - 1) / task.workgroup_size[0]
-            }
-            _ => {
-                let num_mats_per_wg = task.workgroup_size[0] / 32;
-                (task.num_bms + num_mats_per_wg - 1) / num_mats_per_wg
-            }
+        let num_dispatch_groups = {
+            let num_mats_per_wg = task.workgroup_size[0]*task.workgroup_size[1] / 32;
+            (task.num_bms + num_mats_per_wg - 1) / num_mats_per_wg
         };
         println!(
             "num bms: {}, num dispatch groups: {}",
@@ -559,7 +554,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                         "{}-NBMS={}-WGS=({}, 32)",
                                         &task_group_prefix,
                                         num_bms,
-                                        num_wg * 32
+                                        num_wg,
                                     ),
                                     num_bms,
                                     workgroup_size: [num_wg, 32],
