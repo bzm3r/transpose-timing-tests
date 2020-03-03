@@ -5,10 +5,12 @@ use std::path::{Path, PathBuf};
 
 use crate::file_utils::is_relatively_fresh;
 
+
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum KernelType {
-    Threadgroup,
+    Threadgroup1D,
+    Threadgroup2D,
     Ballot,
     Shuffle,
     HybridShuffle,
@@ -17,7 +19,8 @@ pub enum KernelType {
 impl fmt::Display for KernelType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            KernelType::Threadgroup => write!(f, "{}", "threadgroup"),
+            KernelType::Threadgroup1D => write!(f, "{}", "threadgroup1D"),
+            KernelType::Threadgroup2D => write!(f, "{}", "threadgroup2D"),
             KernelType::Ballot => write!(f, "{}", "ballot"),
             KernelType::Shuffle => write!(f, "{}", "shuffle"),
             KernelType::HybridShuffle => write!(f, "{}", "hybrid shuffle"),
@@ -93,8 +96,9 @@ impl Task {
             .expect(&format!("could not find kernel template at path: {}", &tp));
 
         match self.kernel_type {
-            KernelType::Threadgroup => {
+            KernelType::Threadgroup2D | KernelType::Threadgroup1D => {
                 kernel = kernel.replace("~WG_SIZE~", &format!("{}", self.workgroup_size[0]));
+                kernel = kernel.replace("~MATS_PER_WG~", &format!("{}", self.workgroup_size[0]/32));
             }
             _ => {
                 if self.workgroup_size[1] > 1 {
@@ -205,7 +209,8 @@ pub struct NumCpuExecs(pub u32);
 pub struct NumGpuExecs(pub u32);
 
 pub enum TaskGroupDefn {
-    Threadgroup(NumCpuExecs, NumGpuExecs),
+    Threadgroup1D(NumCpuExecs, NumGpuExecs),
+    Threadgroup2D(NumCpuExecs, NumGpuExecs),
     Shuffle(NumCpuExecs, NumGpuExecs),
     HybridShuffle(NumCpuExecs, NumGpuExecs),
     Ballot(NumCpuExecs, NumGpuExecs),

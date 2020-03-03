@@ -536,13 +536,13 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
     pub fn set_task_group(&mut self, task_group_defn: TaskGroupDefn) {
         self.task_group = match task_group_defn {
-            TaskGroupDefn::Threadgroup(nce, nge) => {
-                let task_group_prefix = format!("{}-{}", self.backend, KernelType::Threadgroup);
+            TaskGroupDefn::Threadgroup2D(nce, nge) => {
+                let task_group_prefix = format!("{}-{}", self.backend, KernelType::Threadgroup2D);
                 Some(TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
                     num_gpu_execs: nge,
                     num_cpu_execs: nce,
-                    kernel_type: KernelType::Threadgroup,
+                    kernel_type: KernelType::Threadgroup2D,
                     tasks: {
                         let mut tasks = Vec::<Task>::new();
 
@@ -562,11 +562,11 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                     instant_times: vec![],
                                     kernel_name: format!(
                                         "transpose-{}-WGS=({},{})",
-                                        KernelType::Threadgroup,
+                                        KernelType::Threadgroup2D,
                                         num_wg,
                                         32
                                     ),
-                                    kernel_type: KernelType::Threadgroup,
+                                    kernel_type: KernelType::Threadgroup2D,
                                 })
                             }
                         }
@@ -575,14 +575,15 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     },
                 })
             }
-            TaskGroupDefn::Shuffle(nce, nge) | TaskGroupDefn::Ballot(nce, nge) => {
+            TaskGroupDefn::Shuffle(nce, nge) | TaskGroupDefn::Ballot(nce, nge) | TaskGroupDefn::Threadgroup1D(nce, nge) => {
                 let kernel_type = match task_group_defn {
                     TaskGroupDefn::Shuffle(_, _) => KernelType::Shuffle,
                     TaskGroupDefn::Ballot(_, _) => KernelType::Ballot,
+                    TaskGroupDefn::Threadgroup1D(_, _) => KernelType::Threadgroup1D,
                     _ => unreachable!(),
                 };
 
-                if is_intel(&self.device_name).unwrap() {
+                if requesting_subgroup_on_intel(&self.device_name, &kernel_type).unwrap() {
                     println!(
                         "Detected Intel device, skipping creation of subgroup kernel task group."
                     );
@@ -828,10 +829,19 @@ fn vk_get_timestamp_period(device_name: &str) -> Result<f64, String> {
     }
 }
 
-pub fn is_intel(device_name: &str) -> Result<bool, String> {
+pub fn requesting_subgroup_on_intel(device_name: &str, kernel_type: &KernelType) -> Result<bool, String> {
     match device_name {
         NVIDIA_GTX_1060 | NVIDIA_RTX_2060 | AMD_RADEON_RX570 => Ok(false),
-        INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => Ok(true),
+        INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => {
+            match kernel_type {
+                KernelType::Shuffle | KernelType::Ballot => {
+                    Ok(true)
+                },
+                _ => {
+                    Ok(false)
+                }
+            }
+        },
         _ => Err(String::from("Unknown device.")),
     }
 }
