@@ -1,0 +1,75 @@
+#version 450
+#extension GL_KHR_shader_subgroup_shuffle: enable
+
+#define WORKGROUP_SIZE ~WG_SIZE~
+
+// Unlike the threadgroup case, the Y-dimension of the workgroup size is not used.
+// This is because the Y-dimension will be implicit in the number of subgroups in a workgroup.
+layout(local_size_x = WORKGROUP_SIZE) in;
+
+layout(set = 0, binding = 0) buffer BM {
+    uint[32] bms[];
+};
+struct Uniforms
+{
+    uint num_bms;
+    uint num_executions;
+};
+layout(set=0, binding = 1) uniform UniformInput
+{
+    Uniforms u_consts;
+};
+
+
+uint shuffle_round(uint a, uint m, uint s) {
+    uint b = subgroupShuffleXor(a, s);
+    uint c;
+    if ((gl_SubgroupInvocationID & s) == 0) {
+        c = b << s;
+    } else {
+        m = ~m;
+        c = b >> s;
+    }
+    return (a & m) | (c & ~m);
+}
+
+const uint shifts[5] = uint[5](16, 8, 4, 2, 1);
+const uint masks[5] = uint[5](0xffff, 0xff00ff, 0xf0f0f0f, 0x33333333, 0x55555555);
+
+void main() {
+    // First, note that x/(2.pow(y)) = x >> y. In our case, 2.pow(5) = 32 is particularly relevant.
+    // gl_NumSubgroups stores the number of subgroups within a workgroup.
+    // Within a subgroup, how many groups of 32 are there? This is given by (gl_SubgroupSize >> 5).
+    // It could be though, that the workgroup size is smaller than the subgroup size.
+    // So, the number of matrices that can be handled by a workgroup is: min(gl_WorkGroupSize >> 5, gl_SubgroupSize >> 5).
+    // gl_SubgroupID gives us the ID of the subgroup this invocation is in, within the workgroup.
+    // Finally, if gl_SubgroupSize > 32, then (gl_SubgroupInvocationID >> 5) gives us the matrix ID within the subgroup.
+
+    uint sg_size = min(gl_SubgroupSize, gl_WorkGroupSize.x);
+    uint mats_per_sg = sg_size >> 5;
+    uint log2_sg_size = findMSB(sg_size);
+    uint sgs_per_wg = gl_WorkGroupSize.x >> log2_sg_size;
+    uint global_bm_ix = sgs_per_wg*mats_per_sg*gl_WorkGroupID.x + mats_per_sg*gl_SubgroupID + (gl_SubgroupInvocationID >> 5);
+
+    if (global_bm_ix < u_consts.num_bms) {
+        uint row_id = gl_SubgroupInvocationID & 31;
+        uint global_row = bms[global_bm_ix][row_id];
+        uint row;
+
+        for (uint iter = 0; iter < u_consts.num_executions; iter++) {
+            row = global_row;
+            row = shuffle_round(row, 0xffff, 16);
+            row = shuffle_round(row, 0xff00ff, 8);
+            row = shuffle_round(row, 0xf0f0f0f, 4);
+            row = shuffle_round(row, 0x33333333, 2);
+            row = shuffle_round(row, 0x55555555, 1);
+//            for (uint i = 0; i < 5; i++) {
+//                m = masks[i];
+//                s = shifts[i];
+//
+//                row = shuffle_round(row, m, s);
+//            }
+        }
+        bms[global_bm_ix][row_id] = row;
+    }
+}
