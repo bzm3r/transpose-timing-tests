@@ -11,7 +11,7 @@ extern crate csv;
 extern crate gfx_hal as hal;
 extern crate shaderc;
 
-use crate::bitmats::BitMatrix;
+use crate::bitmats::{BitMatrix, Interpretation};
 use crate::task::{KernelType, NumCpuExecs, NumGpuExecs, Task, TaskGroup, TaskGroupDefn};
 use hal::{
     adapter::{Adapter, MemoryProperties, MemoryType},
@@ -137,7 +137,16 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let device = &gpu.device;
         let queue_group = gpu.queue_groups.first_mut().unwrap();
 
-        let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|i| BitMatrix::new_random()).collect();
+        let interpretation = match task.kernel_type {
+            KernelType::Shuffle8 => {
+                Interpretation::B8
+            },
+            _ => {
+                Interpretation::B32
+            }
+        };
+
+        let mut bms: Vec<BitMatrix> = (0..task.num_bms).map(|i| BitMatrix::new_random(interpretation)).collect();
         let raw_bms: Vec<[u32; 32]> = bms.iter().map(|bm| bm.as_u32s()).collect();
         let mut flat_raw_bms: Vec<u32> = Vec::new();
         for raw_bm in raw_bms.iter() {
@@ -305,7 +314,6 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let query_pool = unsafe { device.create_query_pool(query::Type::Timestamp, 2).ok() };
         let fence = device.create_fence(false).unwrap();
 
-        let kernel_type = &task.kernel_type;
         let num_dispatch_groups = {
             let num_mats_per_wg = task.workgroup_size[0]*task.workgroup_size[1] / 32;
             (task.num_bms + num_mats_per_wg - 1) / num_mats_per_wg
@@ -413,7 +421,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                 assert_eq!(flat_raw_bms.len(), result.len());
                 let result_bms: Vec<BitMatrix> = (0..(task.num_bms as usize))
                     .map(|i| {
-                        BitMatrix::from_u32s(&result[i * 32..(i + 1) * 32])
+                        BitMatrix::from_u32s(&result[i * 32..(i + 1) * 32], interpretation)
                             .expect("could not construct BitMatrix from u32 slice")
                     })
                     .collect();
@@ -535,14 +543,14 @@ impl<B: hal::Backend> GpuTestEnv<B> {
     }
 
     pub fn set_task_group(&mut self, task_group_defn: TaskGroupDefn) {
-        self.task_group = match task_group_defn {
-            TaskGroupDefn::Threadgroup2D(nce, nge) => {
-                let task_group_prefix = format!("{}-{}", self.backend, KernelType::Threadgroup2D);
+        self.task_group = match task_group_defn.kernel_type {
+            KernelType::Threadgroup2D => {
+                let task_group_prefix = format!("{}-{}", self.backend, task_group_defn.kernel_type);
                 Some(TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
-                    num_gpu_execs: nge,
-                    num_cpu_execs: nce,
-                    kernel_type: KernelType::Threadgroup2D,
+                    num_gpu_execs: task_group_defn.num_gpu_execs,
+                    num_cpu_execs: task_group_defn.num_cpu_execs,
+                    kernel_type: task_group_defn.kernel_type,
                     tasks: {
                         let mut tasks = Vec::<Task>::new();
 
@@ -562,11 +570,11 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                     instant_times: vec![],
                                     kernel_name: format!(
                                         "transpose-{}-WGS=({},{})",
-                                        KernelType::Threadgroup2D,
+                                        task_group_defn.kernel_type,
                                         num_wg,
                                         32
                                     ),
-                                    kernel_type: KernelType::Threadgroup2D,
+                                    kernel_type: task_group_defn.kernel_type,
                                 })
                             }
                         }
@@ -575,26 +583,19 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     },
                 })
             }
-            TaskGroupDefn::Shuffle(nce, nge) | TaskGroupDefn::Ballot(nce, nge) | TaskGroupDefn::Threadgroup1D(nce, nge) => {
-                let kernel_type = match task_group_defn {
-                    TaskGroupDefn::Shuffle(_, _) => KernelType::Shuffle,
-                    TaskGroupDefn::Ballot(_, _) => KernelType::Ballot,
-                    TaskGroupDefn::Threadgroup1D(_, _) => KernelType::Threadgroup1D,
-                    _ => unreachable!(),
-                };
-
-                if requesting_subgroup_on_intel(&self.device_name, &kernel_type).unwrap() {
+            KernelType::Threadgroup1D | KernelType::Shuffle8 | KernelType::Shuffle32 | KernelType::Ballot32 => {
+                if check_kernel_for_intel(&self.device_name, &task_group_defn.kernel_type).unwrap() {
                     println!(
-                        "Detected Intel device, skipping creation of subgroup kernel task group."
+                        "Detected Intel device, skipping creation of SIMD-N (N > 8) kernel task group."
                     );
                     None
                 } else {
-                    let task_group_prefix = format!("{}-{}", self.backend, kernel_type);
+                    let task_group_prefix = format!("{}-{}", self.backend, task_group_defn.kernel_type);
                     Some(TaskGroup {
                         name: format!("{}-{}", &task_group_prefix, self.device_name),
-                        num_gpu_execs: nge,
-                        num_cpu_execs: nce,
-                        kernel_type: kernel_type,
+                        num_gpu_execs: task_group_defn.num_gpu_execs,
+                        num_cpu_execs: task_group_defn.num_cpu_execs,
+                        kernel_type: task_group_defn.kernel_type,
                         tasks: {
                             let mut tasks = Vec::<Task>::new();
 
@@ -612,9 +613,9 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                         instant_times: vec![],
                                         kernel_name: format!(
                                             "transpose-{}-WGS=({},{})",
-                                            kernel_type, num_threads, 1
+                                            task_group_defn.kernel_type, num_threads, 1
                                         ),
-                                        kernel_type,
+                                        kernel_type: task_group_defn.kernel_type,
                                     })
                                 }
                             }
@@ -623,13 +624,13 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     })
                 }
             }
-            TaskGroupDefn::HybridShuffle(nce, nge) => {
-                let task_group_prefix = format!("{}-{}", self.backend, KernelType::HybridShuffle);
+            KernelType::HybridShuffle32 => {
+                let task_group_prefix = format!("{}-{}", self.backend, task_group_defn.kernel_type);
                 Some(TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
-                    num_gpu_execs: nge,
-                    num_cpu_execs: nce,
-                    kernel_type: KernelType::HybridShuffle,
+                    num_gpu_execs: task_group_defn.num_gpu_execs,
+                    num_cpu_execs: task_group_defn.num_cpu_execs,
+                    kernel_type: task_group_defn.kernel_type,
                     tasks: {
                         let mut tasks = Vec::<Task>::new();
 
@@ -648,11 +649,11 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                                     instant_times: vec![],
                                     kernel_name: format!(
                                         "transpose-{}-WGS=({},{})",
-                                        KernelType::HybridShuffle,
+                                        task_group_defn.kernel_type,
                                         num_threads,
                                         1
                                     ),
-                                    kernel_type: KernelType::HybridShuffle,
+                                    kernel_type: task_group_defn.kernel_type,
                                 })
                             }
                         }
@@ -660,7 +661,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                         tasks
                     },
                 })
-            }
+            },
         }
     }
 
@@ -829,12 +830,12 @@ fn vk_get_timestamp_period(device_name: &str) -> Result<f64, String> {
     }
 }
 
-pub fn requesting_subgroup_on_intel(device_name: &str, kernel_type: &KernelType) -> Result<bool, String> {
+pub fn check_kernel_for_intel(device_name: &str, kernel_type: &KernelType) -> Result<bool, String> {
     match device_name {
         NVIDIA_GTX_1060 | NVIDIA_RTX_2060 | AMD_RADEON_RX570 => Ok(false),
         INTEL_HD_520 | INTEL_HD_630 | INTEL_IRIS_PLUS_640 | INTEL_IVYBRIDGE_MOBILE => {
             match kernel_type {
-                KernelType::Shuffle | KernelType::Ballot => {
+                KernelType::Shuffle32 | KernelType::Ballot32 => {
                     Ok(true)
                 },
                 _ => {

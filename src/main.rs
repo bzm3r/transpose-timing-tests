@@ -16,6 +16,8 @@ mod task;
 
 use gpu::GpuTestEnv;
 use task::{NumCpuExecs, NumGpuExecs, TaskGroupDefn};
+use shaderc::ShaderKind::Task;
+use crate::task::{TaskGroup, KernelType};
 
 fn main() {
     #[cfg(debug_assertions)]
@@ -25,8 +27,8 @@ fn main() {
         panic!("no backend loaded! `cargo run --features X`, where X is one of vk, dx12 or metal");
     }
 
-    let num_cpu_execs: u32 = 101;
-    let num_gpu_execs: u32 = 1001;
+    let num_cpu_execs = NumCpuExecs(101);
+    let num_gpu_execs = NumGpuExecs(1001);
 
     #[cfg(feature = "vk")]
     let mut test_env = GpuTestEnv::<Vulkan::Backend>::vulkan();
@@ -34,38 +36,63 @@ fn main() {
     #[cfg(feature = "metal")]
     let mut test_env = GpuTestEnv::<Metal::Backend>::metal();
 
-    test_env.set_task_group(TaskGroupDefn::Threadgroup1D(
-        NumCpuExecs(num_cpu_execs),
-        NumGpuExecs(num_gpu_execs),
-    ));
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::Threadgroup1D,
+        }
+    );
     test_env.time_task_group();
     test_env.save_results();
 
-    // test_env.set_task_group(TaskGroupDefn::Threadgroup2D(
-    //     NumCpuExecs(num_cpu_execs),
-    //     NumGpuExecs(num_gpu_execs),
-    // ));
-    // test_env.time_task_group();
-    // test_env.save_results();
-    //
-    // test_env.set_task_group(TaskGroupDefn::HybridShuffle(
-    //     NumCpuExecs(num_cpu_execs),
-    //     NumGpuExecs(num_gpu_execs),
-    // ));
-    // test_env.time_task_group();
-    // test_env.save_results();
-    //
-    // test_env.set_task_group(TaskGroupDefn::Ballot(
-    //     NumCpuExecs(num_cpu_execs),
-    //     NumGpuExecs(num_gpu_execs),
-    // ));
-    // test_env.time_task_group();
-    // test_env.save_results();
-    //
-    // test_env.set_task_group(TaskGroupDefn::Shuffle(
-    //     NumCpuExecs(num_cpu_execs),
-    //     NumGpuExecs(num_gpu_execs),
-    // ));
-    // test_env.time_task_group();
-    // test_env.save_results();
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::Threadgroup2D,
+        }
+    );
+    test_env.time_task_group();
+    test_env.save_results();
+
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::Shuffle8,
+        }
+    );
+    test_env.time_task_group();
+    test_env.save_results();
+
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::Shuffle32,
+        }
+    );
+    test_env.time_task_group();
+    test_env.save_results();
+
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::Ballot32,
+        }
+    );
+    test_env.time_task_group();
+    test_env.save_results();
+
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::HybridShuffle32,
+        }
+    );
+    test_env.time_task_group();
+    test_env.save_results();
 }

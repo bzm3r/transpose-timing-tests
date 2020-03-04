@@ -20,22 +20,36 @@ k_to_abbr = dict(zip(knowns, [g[1] for g in gpu_info]))
 k_to_col = dict(zip(knowns, [g[2] for g in gpu_info]))
 free_colors = ['#1e8787', '#871e1e', '#875b1e', '#c0b926', '#c08526']
 
-kernel_line_styles = dict([("shuffle", {"ls": "-", "marker": "o"}), ("ballot", {"ls": "-", "marker": "s"}), ("hybrid shuffle", {"ls": "--", "marker": "d"}), ("threadgroup1D", {"ls": "--", "marker": "s"}), ("threadgroup2D", {"ls": "--", "marker": "o"})])
+kernel_line_styles = dict([("shuffle32", {"ls": "-", "marker": "o"}), ("shuffle8", {"ls": "-", "marker": "s"}),
+                           ("ballot32", {"ls": "-", "marker": "^"}), ("ballot8", {"ls": "-", "marker": "v"}),
+                           ("hybrid_shuffle32", {"ls": "--", "marker": "d"}),
+                           ("threadgroup1D", {"ls": "--", "marker": "s"}),
+                           ("threadgroup2D", {"ls": "--", "marker": "o"})])
 
 cwd = os.getcwd()
 dat_files = [f for f in os.listdir(cwd) if os.path.splitext(f)[1] == ".dat"]
 
+
 def maximally_utilized(wg_x, wg_y, num_bms):
-    wg_size = wg_x*wg_y
-    num_mats_per_wg = wg_size/32
+    wg_size = wg_x * wg_y
+    num_mats_per_wg = wg_size / 32
     return num_bms > num_mats_per_wg
 
+
 def total_threads_dispatched(wg_x, wg_y, num_bms):
-    wg_size = wg_x*wg_y
+    wg_size = wg_x * wg_y
     num_mats_per_wg = wg_size / 32
-    num_dispatches = int(np.ceil(num_bms/num_mats_per_wg))
-    print("num_bms: {} | wg_size: {}, {} | num_mats_per_wg: {} | num_dispatches: {} | num_threads: {}".format(num_bms, wg_x, wg_y, num_mats_per_wg, num_dispatches, wg_size*num_dispatches))
+    num_dispatches = int(np.ceil(num_bms / num_mats_per_wg))
+    fs = "num_bms: {} | wg_size: {}, {} | num_mats_per_wg: {} | num_dispatches: {} | num_threads: {}"
+    print(fs.format(num_bms,
+                    wg_x,
+                    wg_y,
+                    num_mats_per_wg,
+                    num_dispatches,
+                    wg_size * num_dispatches))
+
     return wg_size * num_dispatches
+
 
 class TimingResults:
     def __init__(self, results_dir, file_name):
@@ -85,11 +99,13 @@ class TimingResults:
         if np.average([x[1][0] for x in self.dat_ts_avg_std.items()]) < 1.0:
             self.fallback_mode = "CPU"
 
-        self.fixed_bm_size = 2**14
-        self.dat_ts_sorted_by_tgs = sorted([(k[0]*k[1], v) for k, v in self.dat_ts_avg_std.items() if k[2] == self.fixed_bm_size],
-                                           key=lambda x: x[0])
-        self.dat_insts_sorted_by_tgs = sorted([(k[0]*k[1], v) for k, v in self.dat_ts_avg_std.items() if k[2] == self.fixed_bm_size],
-                                              key=lambda x: x[0])
+        self.fixed_bm_size = 2 ** 14
+        self.dat_ts_sorted_by_tgs = sorted(
+            [(k[0] * k[1], v) for k, v in self.dat_ts_avg_std.items() if k[2] == self.fixed_bm_size],
+            key=lambda x: x[0])
+        self.dat_insts_sorted_by_tgs = sorted(
+            [(k[0] * k[1], v) for k, v in self.dat_ts_avg_std.items() if k[2] == self.fixed_bm_size],
+            key=lambda x: x[0])
 
         self.xs_tg = [tup[0] for tup in self.dat_ts_sorted_by_tgs]
         self.yts_tg = [tup[1] for tup in self.dat_ts_sorted_by_tgs]
@@ -99,13 +115,15 @@ class TimingResults:
             opt_tg_vector = max(self.dat_ts_avg_std.items(), key=lambda x: x[1][0])[0]
         else:
             opt_tg_vector = max(self.dat_insts_avg_std.items(), key=lambda x: x[1][0])[0]
-        self.opt_tg = opt_tg_vector[0]*opt_tg_vector[1]
+        self.opt_tg = opt_tg_vector[0] * opt_tg_vector[1]
 
         print("{} | {}".format(self.gpu, self.kernel))
         self.dat_ts_sorted_by_nd = sorted(
-            [(total_threads_dispatched(k[0], k[1], k[2]), v) for k, v in self.dat_ts_avg_std.items() if k[0] * k[1] == self.opt_tg and maximally_utilized(k[0], k[1], k[2])], key=lambda x: x[0])
+            [(total_threads_dispatched(k[0], k[1], k[2]), v) for k, v in self.dat_ts_avg_std.items() if
+             k[0] * k[1] == self.opt_tg and maximally_utilized(k[0], k[1], k[2])], key=lambda x: x[0])
         self.dat_insts_sorted_by_nd = sorted(
-            [(total_threads_dispatched(k[0], k[1], k[2]), v) for k, v in self.dat_insts_avg_std.items() if k[0] * k[1] == self.opt_tg and maximally_utilized(k[0], k[1], k[2])], key=lambda x: x[0])
+            [(total_threads_dispatched(k[0], k[1], k[2]), v) for k, v in self.dat_insts_avg_std.items() if
+             k[0] * k[1] == self.opt_tg and maximally_utilized(k[0], k[1], k[2])], key=lambda x: x[0])
         print("=============")
 
         self.xs_nd = [tup[0] for tup in self.dat_ts_sorted_by_nd]
@@ -145,7 +163,7 @@ def plot_varying_tg_using_gpu_queries(timing_results):
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-    
+
     # Put a legend to the right of the current axis
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results, num BMs={}".format(timing_results[0].fixed_bm_size))
@@ -173,12 +191,13 @@ def plot_varying_tg_using_cpu_queries(timing_results):
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-    
+
     # Put a legend to the right of the current axis
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("CPU timing query results, num BMs={}".format(timing_results[0].fixed_bm_size))
     fig.set_size_inches(14, 8.5)
     fig.savefig(os.path.join(cwd, "plot-varying-tgs-cpu-queries.png"), bbox_inches="tight")
+
 
 def plot_varying_tg_using_gpu_queries_with_cpu_query_fallback(timing_results):
     plt.rcParams.update({'font.size': 16})
@@ -205,7 +224,7 @@ def plot_varying_tg_using_gpu_queries_with_cpu_query_fallback(timing_results):
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-    
+
     # Put a legend to the right of the current axis
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results (w/ CPU fallback)")
@@ -232,7 +251,7 @@ def plot_varying_nd_using_gpu_queries(timing_results):
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-    
+
     # Put a legend to the right of the current axis
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results")
@@ -259,13 +278,12 @@ def plot_varying_nd_using_cpu_queries(timing_results):
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-    
+
     # Put a legend to the right of the current axis
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("CPU timing query results")
     fig.set_size_inches(14, 8.5)
     fig.savefig(os.path.join(cwd, "plot-varying-nds-cpu-queries.png"), bbox_inches="tight")
-
 
 def plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(timing_results):
     plt.rcParams.update({'font.size': 16})
@@ -291,7 +309,7 @@ def plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(timing_results):
     # Shrink current axis by 20%
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-    
+
     # Put a legend to the right of the current axis
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results (w/ CPU fallback)")
@@ -307,4 +325,3 @@ plot_varying_nd_using_cpu_queries(trs)
 # plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(trs)
 
 plt.close("all")
-

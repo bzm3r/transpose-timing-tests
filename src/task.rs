@@ -11,9 +11,10 @@ use crate::file_utils::is_relatively_fresh;
 pub enum KernelType {
     Threadgroup1D,
     Threadgroup2D,
-    Ballot,
-    Shuffle,
-    HybridShuffle,
+    Ballot32,
+    Shuffle32,
+    Shuffle8,
+    HybridShuffle32,
 }
 
 impl fmt::Display for KernelType {
@@ -21,9 +22,10 @@ impl fmt::Display for KernelType {
         match self {
             KernelType::Threadgroup1D => write!(f, "{}", "threadgroup1D"),
             KernelType::Threadgroup2D => write!(f, "{}", "threadgroup2D"),
-            KernelType::Ballot => write!(f, "{}", "ballot"),
-            KernelType::Shuffle => write!(f, "{}", "shuffle"),
-            KernelType::HybridShuffle => write!(f, "{}", "hybrid shuffle"),
+            KernelType::Ballot32 => write!(f, "{}", "ballot32"),
+            KernelType::Shuffle32 => write!(f, "{}", "shuffle32"),
+            KernelType::Shuffle8 => write!(f, "{}", "shuffle8"),
+            KernelType::HybridShuffle32 => write!(f, "{}", "hybrid_shuffle32"),
         }
     }
 }
@@ -96,17 +98,15 @@ impl Task {
             .expect(&format!("could not find kernel template at path: {}", &tp));
 
         match self.kernel_type {
-            KernelType::Threadgroup2D | KernelType::Threadgroup1D => {
-                kernel = kernel.replace("~WG_SIZE~", &format!("{}", self.workgroup_size[0]));
-                kernel = kernel.replace("~MATS_PER_WG~", &format!("{}", self.workgroup_size[0]/32));
-            }
-            _ => {
+            KernelType::Shuffle8 | KernelType::Shuffle32 | KernelType::HybridShuffle32 | KernelType::Threadgroup1D | KernelType::Ballot32 => {
                 if self.workgroup_size[1] > 1 {
-                    panic!("does not make sense to have Y-dimension in workgroup size for subgroup kernels");
+                    panic!("does not make sense to have Y-dimension in workgroup size for non-Threadgroup2D kernels");
                 }
-                kernel = kernel.replace("~WG_SIZE~", &format!("{}", self.workgroup_size[0]));
             }
+            _ => {}
         }
+
+        kernel = kernel.replace("~WG_SIZE~", &format!("{}", self.workgroup_size[0]));
 
         std::fs::write(
             format!("{}/{}.comp", dir.display(), self.kernel_name),
@@ -208,12 +208,10 @@ pub struct NumCpuExecs(pub u32);
 #[derive(Clone, Copy)]
 pub struct NumGpuExecs(pub u32);
 
-pub enum TaskGroupDefn {
-    Threadgroup1D(NumCpuExecs, NumGpuExecs),
-    Threadgroup2D(NumCpuExecs, NumGpuExecs),
-    Shuffle(NumCpuExecs, NumGpuExecs),
-    HybridShuffle(NumCpuExecs, NumGpuExecs),
-    Ballot(NumCpuExecs, NumGpuExecs),
+pub struct TaskGroupDefn {
+    pub num_cpu_execs: NumCpuExecs,
+    pub num_gpu_execs: NumGpuExecs,
+    pub kernel_type: KernelType,
 }
 
 pub struct TaskGroup {
