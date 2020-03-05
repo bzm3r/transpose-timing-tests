@@ -583,7 +583,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     },
                 })
             }
-            KernelType::Threadgroup1D | KernelType::Shuffle8 | KernelType::Shuffle32 | KernelType::Ballot32 => {
+            KernelType::Shuffle8 | KernelType::Shuffle32 | KernelType::Ballot32 => {
                 if check_kernel_for_intel(&self.device_name, &task_group_defn.kernel_type).unwrap() {
                     println!(
                         "Detected Intel device, skipping creation of SIMD-N (N > 8) kernel task group."
@@ -624,7 +624,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     })
                 }
             }
-            KernelType::HybridShuffle32 => {
+            KernelType::Threadgroup1D | KernelType::HybridShuffle32 => {
                 let task_group_prefix = format!("{}-{}", self.backend, task_group_defn.kernel_type);
                 Some(TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
