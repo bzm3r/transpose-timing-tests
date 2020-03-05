@@ -1,5 +1,4 @@
 #version 450
-#extension GL_KHR_shader_subgroup_shuffle: enable
 #define WORKGROUP_SIZE ~WG_SIZE~
 
 layout(local_size_x = WORKGROUP_SIZE, local_size_y = 1) in;
@@ -17,21 +16,8 @@ layout(set=0, binding = 1) uniform UniformInput
     Uniforms u_consts;
 };
 
-uint shuffle_round_tg(uint dst_tix, uint a, uint b, uint m, uint s) {
+uint shuffle_round(uint dst_tix, uint a, uint b, uint m, uint s) {
     uint c;
-    if ((dst_tix & s) == 0) {
-        c = b << s;
-    } else {
-        m = ~m;
-        c = b >> s;
-    }
-    return (a & m) | (c & ~m);
-}
-
-uint shuffle_round(uint dst_tix, uint a, uint m, uint s) {
-    uint b = subgroupShuffleXor(a, s);
-    uint c;
-    // this predicate is unlike the pure-SIMD shuffle function, which uses gl_SubgroupInvocationID
     if ((dst_tix & s) == 0) {
         c = b << s;
     } else {
@@ -74,7 +60,7 @@ void main() {
                 src_dat = tg_bms[local_bm_ix][src_rix];
                 barrier();
 
-                dst_dat = shuffle_round_tg(dst_tix, dst_dat, src_dat, m, s);
+                dst_dat = shuffle_round(dst_tix, dst_dat, src_dat, m, s);
             }
         }
 

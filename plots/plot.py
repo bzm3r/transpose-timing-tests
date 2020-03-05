@@ -20,11 +20,11 @@ k_to_abbr = dict(zip(knowns, [g[1] for g in gpu_info]))
 k_to_col = dict(zip(knowns, [g[2] for g in gpu_info]))
 free_colors = ['#1e8787', '#871e1e', '#875b1e', '#c0b926', '#c08526']
 
-kernel_line_styles = dict([("shuffle32", {"ls": "-", "marker": "o"}), ("shuffle8", {"ls": "-", "marker": "s"}),
+kernel_styles = dict([("shuffle32", {"ls": "-", "marker": "o"}), ("shuffle8", {"ls": "-", "marker": "s"}),
                            ("ballot32", {"ls": "-", "marker": "^"}), ("ballot8", {"ls": "-", "marker": "v"}),
                            ("hybrid_shuffle32", {"ls": "--", "marker": "d"}),
-                           ("threadgroup1D", {"ls": "--", "marker": "s"}),
-                           ("threadgroup2D", {"ls": "--", "marker": "o"})])
+                           ("threadgroup1D", {"ls": ":", "marker": "s"}),
+                           ("threadgroup2D", {"ls": ":", "marker": "o"})])
 
 cwd = os.getcwd()
 dat_files = [f for f in os.listdir(cwd) if os.path.splitext(f)[1] == ".dat"]
@@ -130,7 +130,9 @@ class TimingResults:
         self.yts_nd = [tup[1] for tup in self.dat_ts_sorted_by_nd]
         self.yinsts_nd = [tup[1] for tup in self.dat_insts_sorted_by_nd]
 
-        self.line_style = kernel_line_styles[self.kernel]
+        kernel_style = kernel_styles[self.kernel]
+        self.line_style = kernel_style["ls"]
+        self.marker = kernel_style["marker"]
         if self.known_gpu:
             self.line_color = k_to_col[gpu]
         else:
@@ -152,7 +154,7 @@ def plot_varying_tg_using_gpu_queries(timing_results):
                     [y[0] for y in tr.yts_tg],
                     yerr=[y[1] for y in tr.yts_tg],
                     label="{}, {}, {}".format(tr.gpu, tr.back, tr.kernel),
-                    marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style
+                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
                     )
 
     ax.set_xlabel("threadgroup size")
@@ -180,7 +182,7 @@ def plot_varying_tg_using_cpu_queries(timing_results):
                     [y[0] for y in tr.yinsts_tg],
                     yerr=[y[1] for y in tr.yinsts_tg],
                     label="{}, {}, {}".format(tr.gpu, tr.back, tr.kernel),
-                    marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style
+                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
                     )
 
     ax.set_xlabel("threadgroup size")
@@ -213,7 +215,7 @@ def plot_varying_tg_using_gpu_queries_with_cpu_query_fallback(timing_results):
                     [y[0] for y in dat],
                     yerr=[y[1] for y in dat],
                     label="{}, {}, {}, TGS={} ({})".format(tr.gpu, tr.back, tr.kernel, tr.opt_tg, tr.fallback_mode),
-                    marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style,
+                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style,
                     )
 
     ax.set_xlabel("threadgroup size")
@@ -241,7 +243,7 @@ def plot_varying_nd_using_gpu_queries(timing_results):
                     [y[0] for y in tr.yts_nd],
                     yerr=[y[1] for y in tr.yts_nd],
                     label="{}, {}, {}, TGS={}".format(tr.gpu, tr.back, tr.kernel, tr.opt_tg),
-                    marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style
+                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
                     )
 
     ax.set_xlabel("theoretical num threads dispatched")
@@ -268,7 +270,7 @@ def plot_varying_nd_using_cpu_queries(timing_results):
                     [y[0] for y in tr.yinsts_nd],
                     yerr=[y[1] for y in tr.yinsts_nd],
                     label="{}, {}, {}, TGS={}".format(tr.gpu, tr.back, tr.kernel, tr.opt_tg),
-                    marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style
+                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
                     )
 
     ax.set_xlabel("theoretical num threads dispatched")
@@ -299,7 +301,7 @@ def plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(timing_results):
                     [y[0] for y in dat],
                     yerr=[y[1] for y in dat],
                     label="{}, {}, {}, TGS={} ({})".format(tr.gpu, tr.back, tr.kernel, tr.opt_tg, tr.fallback_mode),
-                    marker=".", capsize=5, markersize=10, color=tr.line_color, ls=tr.line_style
+                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
                     )
 
     ax.set_xlabel("theoretical num threads dispatched")
