@@ -30,11 +30,11 @@ Modern GPU hardware is not only complex, but many of the relevant details are al
 
 The most hardware abstraction, is unsurprisingly then, the one which APIs present front and center: that of threadgroups. In this model, a GPU's processors ("threads") can be thought of being divided into groups ("threadgroups"). The size of these threadgroups can be set by the application. Special programs called "shaders" (or, in the context of general-purpose GPU computing, "kernels") are executed by each thread within the threadgroup. The instructions specified by the kernel are the same across the threads, but a thread can access different memory for these instructions to work upon. Furthermore, threadgroups can include branching control flow statements (e.g. if statements), which can also cause particular threads within a threadgroup to be executing different instructions than another thread, at any given time.
 
-![threadgroup-model](https://i.imgur.com/Z8TohZ9.png)
+![threadgroup-model](./diagrams/threadgroup-model.png)
 
 While this model captures the gist of "what is a GPU?", it is incomplete. To build a more refined mental model, one must start by considering how data flows within a GPU, i.e. understanding hierarchy within which GPU memory is organized.
 
-![memory-hierarchy](https://i.imgur.com/kxpt4Fq.png)
+![memory-hierarchy](./diagrams/memory-hierarchy.png)
 
 
 Each thread has associated with it registers which store data using a [configuration of logic gates](https://en.wikipedia.org/wiki/Flip-flop_(electronics)) called a flip-flop. This storage is expensive in the energy required to maintain it, but powerful in terms of performance. However, its capacity is also quite small (**Question 0:** Why? Probably because we want to keep each thread close by on the chip, and the more of these we have, the hotter everything would get?). Direct access to these registers was unavailable to programmers until quite recently, when APIs began to expose them via subgroup operations.  
@@ -52,16 +52,15 @@ Before we jump into using our new-found understanding of threadgroups and subgro
 
 **Memory representation.** Recall that we are interested in transposing 32x32 bit matrices. Note that an unqualified unsigned integer is 32 bits wide. Therefore, a 32x32 bit matrix can be represented as an array of 32 unsigned integers. 
 
-![](https://i.imgur.com/ZPoTfJz.png)
-
+![bit-matrix](./diagrams/bit-matrix.png)
 
 **General algorithm.** The algorithm we use to transpose the bit matrix is recursive. Label the 32x32 matrix `M_32`, and consider its division into 4 16x16 sub-matrices ("blocks"):
 
-![](https://i.imgur.com/cZ3AEBN.png)
+![bit-mat-transpose-0](./diagrams/bit-matrix-transposition-strategy-0.png)
 
 16x16 blocks of the same colour are swapped with each other, giving us a new matrix `M_16`. Divide `M_16` up into 8x8 blocks:
 
-![](https://i.imgur.com/iNFDP6z.png)
+![bit-mat-transpose-1](./diagrams/bit-matrix-transposition-strategy-1.png)
 
 Once again, blocks of the same colour are swapped with each other, giving us a new matrix, `M_8`. We repeat this procedure 3 more times: 4x4 blocks (produces `M_4` from `M_8`), 2x2 blocks (produces `M_2` from `M_4`), and 1x1 blocks (produces `M_1` from `M_2`).
 
@@ -73,7 +72,7 @@ Note that when you are generating `M_16` from `M_32`, the `i`th row of `M_16` wi
 
 So, if you have 32 processors, the `i`th processor can read `M_32[(i + 16)%32]`, and "shuffle round" its bits, storing the result in a new array called `M_16`. The `i`th processor does its work independently of the other processors, so it is embarrassingly easy to parallelize this problem. Note that each processor will execute the exact same sequence of operations, but will have different input data (SIMD).
 
-For the other cases, the concept is the same, but one must be more careful with the indexing, and the bit shifting. All of this is implemented most plainly in the threadgroup based kernel's "shuffle round" function [`shuffle_round`](https://github.com/bzm3r/transpose-timing-tests/blob/74559f2ecc76d1ee65880eb5b77585059e0e1090/kernels/templates/transpose-threadgroup-template.comp#L20). Given some thread `i`, figuring out which row's data it should read is done on [this line](https://github.com/bzm3r/transpose-timing-tests/blob/74559f2ecc76d1ee65880eb5b77585059e0e1090/kernels/templates/transpose-threadgroup-template.comp#L60).
+For the other cases, the concept is the same, but one must be more careful with the indexing, and the bit shifting. All of this is implemented most plainly in the threadgroup based kernel's "shuffle round" function [`shuffle_round`](). Given some thread `i`, figuring out which row's data it should read is done on [this line](https://github.com/bzm3r/transpose-timing-tests/blob/74559f2ecc76d1ee65880eb5b77585059e0e1090/kernels/templates/transpose-threadgroup-template.comp#L60).
 
 
 **Aside:** for those unfamiliar with bitwise operations, please don't be afraid to understand the code. It will take some time, but the concepts are straightforward. Keep [Wolfram Alpha](https://www.wolframalpha.com/input/?i=BitAnd%5Bffff00_16%2C+ffff_16%5D) or [Rust Playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=3db32d1ea9ff7b7e8a49a0b0b7292cf1) handy (I can't recommend Python, because it does not have unsigned integers, which causes all sorts of problems). Begin by carefully going through these points:
