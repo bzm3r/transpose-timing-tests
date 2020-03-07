@@ -174,7 +174,7 @@ It is difficult to tranpose 32x32 bit matrices on Intel using the relatively sim
 
 To our surprise, hybrid-shuffle methods are actually less performant than pure threadgroup methods on Intel devices. On Nvidia and AMD devices, they are middle of the road.
 
-On the other hand, pure shuffle methods (applied to 16x8x8) bit matrices (the `Shuffle8` kernel) have astonishingly good performance.
+On the other hand, pure shuffle methods (applied to 16x8x8) bit matrices (the `Shuffle8` kernel) have astonishingly good performance. Note that this is not because the `Shuffle8` kernel is simply doing less work, since the `Threadgroup1d8` kernel is not remarkably more performant than the `Threadgroup1d32` kernels on Intel devices. Furthermore, `Shuffle8` kernels are also not remarkably more performant than `Shuffle32` kernels on AMD and Nvidia devices.
 
 ![](./plots/shuffle_8vs32_comparison.png)
 
@@ -184,7 +184,7 @@ As can be seen above, pure-shuffle 16x8x8 bit matrix transposition performance o
 
 ![](./plots/intel_loading_comparison.png)
 
-Observing the effect of payload size on AMD devices does not suggest anything too remarkable. As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs. 
+As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs. 
 
 ## Intel HD 520
 
