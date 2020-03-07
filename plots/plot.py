@@ -20,11 +20,11 @@ k_to_abbr = dict(zip(knowns, [g[1] for g in gpu_info]))
 k_to_col = dict(zip(knowns, [g[2] for g in gpu_info]))
 free_colors = ['#1e8787', '#871e1e', '#875b1e', '#c0b926', '#c08526']
 
-kernel_styles = dict([("shuffle32", {"ls": "-", "marker": "o"}), ("shuffle8", {"ls": "-", "marker": "s"}),
-                           ("ballot32", {"ls": "-", "marker": "^"}), ("ballot8", {"ls": "-", "marker": "v"}),
-                           ("hybrid_shuffle32", {"ls": "--", "marker": "d"}),
-                           ("threadgroup1D", {"ls": ":", "marker": "s"}),
-                           ("threadgroup2D", {"ls": ":", "marker": "o"})])
+kernel_styles = dict([("Shuffle32", {"ls": "-", "marker": "o"}), ("Shuffle8", {"ls": "-", "marker": "s"}),
+                           ("Ballot32", {"ls": "-", "marker": "^"}), ("Ballot8", {"ls": "-", "marker": "v"}),
+                           ("HybridShuffle32", {"ls": "--", "marker": "d"}),
+                           ("Threadgroup1d32", {"ls": ":", "marker": "s"}),
+                           ("Threadgroup2d32", {"ls": ":", "marker": "o"}), ("Threadgroup1d8", {"ls": ":", "marker": "^"}), ("Threadgroup2d8", {"ls": ":", "marker": "v"})])
 
 cwd = os.getcwd()
 dat_files = [f for f in os.listdir(cwd) if os.path.splitext(f)[1] == ".dat"]
@@ -145,7 +145,7 @@ class TimingResults:
 trs = [TimingResults(cwd, f) for f in dat_files]
 
 
-def plot_varying_tg_using_gpu_queries(timing_results):
+def plot_varying_tg_using_gpu_queries(timing_results, save_name):
     plt.rcParams.update({'font.size': 16})
     fig, ax = plt.subplots()
 
@@ -170,71 +170,9 @@ def plot_varying_tg_using_gpu_queries(timing_results):
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results, num BMs={}".format(timing_results[0].fixed_bm_size))
     fig.set_size_inches(14, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-tgs-gpu-queries.png"), bbox_inches="tight")
+    fig.savefig(os.path.join(cwd, "{}.png".format(save_name)), bbox_inches="tight")
 
-
-def plot_varying_tg_using_cpu_queries(timing_results):
-    plt.rcParams.update({'font.size': 16})
-    fig, ax = plt.subplots()
-
-    for tr in timing_results:
-        ax.errorbar(tr.xs_tg,
-                    [y[0] for y in tr.yinsts_tg],
-                    yerr=[y[1] for y in tr.yinsts_tg],
-                    label="{}, {}, {}".format(tr.gpu, tr.back, tr.kernel),
-                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
-                    )
-
-    ax.set_xlabel("threadgroup size")
-    ax.set_xticks([2 ** n for n in range(5, 11)])
-    ax.set_ylabel("transpose/sec")
-    ax.set_xscale("log", basex=2)
-    ax.set_yscale("log", basey=10)
-    # Shrink current axis by 20%
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-
-    # Put a legend to the right of the current axis
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.set_title("CPU timing query results, num BMs={}".format(timing_results[0].fixed_bm_size))
-    fig.set_size_inches(14, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-tgs-cpu-queries.png"), bbox_inches="tight")
-
-
-def plot_varying_tg_using_gpu_queries_with_cpu_query_fallback(timing_results):
-    plt.rcParams.update({'font.size': 16})
-    fig, ax = plt.subplots()
-
-    for tr in timing_results:
-        if tr.fallback_mode == "GPU":
-            dat = tr.yts_tg
-        else:
-            dat = tr.yinsts_tg
-
-        ax.errorbar(tr.xs_nd,
-                    [y[0] for y in dat],
-                    yerr=[y[1] for y in dat],
-                    label="{}, {}, {}, TGS={} ({})".format(tr.gpu, tr.back, tr.kernel, tr.opt_tg, tr.fallback_mode),
-                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style,
-                    )
-
-    ax.set_xlabel("threadgroup size")
-    ax.set_xticks([2 ** n for n in range(5, 11)])
-    ax.set_ylabel("transpose/sec")
-    ax.set_xscale("log", basex=2)
-    ax.set_yscale("log", basey=10)
-    # Shrink current axis by 20%
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-
-    # Put a legend to the right of the current axis
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.set_title("GPU timing query results (w/ CPU fallback)")
-    fig.set_size_inches(14, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-nds-fallback-queries.png"), bbox_inches="tight")
-
-
-def plot_varying_nd_using_gpu_queries(timing_results):
+def plot_varying_nd_using_gpu_queries(timing_results, save_name):
     plt.rcParams.update({'font.size': 16})
     fig, ax = plt.subplots()
 
@@ -258,72 +196,21 @@ def plot_varying_nd_using_gpu_queries(timing_results):
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     ax.set_title("GPU timing query results")
     fig.set_size_inches(14, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-nds-gpu-queries.png"), bbox_inches="tight")
+    fig.savefig(os.path.join(cwd, "{}.png".format(save_name)), bbox_inches="tight")
 
+simd_tg_comparison_kernels = ["Shuffle32", "Threadgroup1d32"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in simd_tg_comparison_kernels], "simd_tg_comparison")
 
-def plot_varying_nd_using_cpu_queries(timing_results):
-    plt.rcParams.update({'font.size': 16})
-    fig, ax = plt.subplots()
+intel_8vs32_comparison_kernels = ["Threadgroup1d8", "Threadgroup1d32", "HybridShuffle32", "Shuffle8"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in intel_8vs32_comparison_kernels and "INT" in tr.gpu], "intel_8vs32_comparison")
 
-    for tr in timing_results:
-        ax.errorbar(tr.xs_nd,
-                    [y[0] for y in tr.yinsts_nd],
-                    yerr=[y[1] for y in tr.yinsts_nd],
-                    label="{}, {}, {}, TGS={}".format(tr.gpu, tr.back, tr.kernel, tr.opt_tg),
-                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
-                    )
+shuffle_8vs32_comparison_kernels = ["Shuffle32", "Shuffle8"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in shuffle_8vs32_comparison_kernels], "shuffle_8vs32_comparison")
 
-    ax.set_xlabel("theoretical num threads dispatched")
-    ax.set_ylabel("transpose/sec")
-    ax.set_xscale("log", basex=2)
-    ax.set_yscale("log", basey=10)
-    # Shrink current axis by 20%
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+tg_dim_comparison_kernels = ["Threadgroup1d32", "Threadgroup2d32"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in tg_dim_comparison_kernels], "tg_dim_comparison")
 
-    # Put a legend to the right of the current axis
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.set_title("CPU timing query results")
-    fig.set_size_inches(14, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-nds-cpu-queries.png"), bbox_inches="tight")
-
-def plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(timing_results):
-    plt.rcParams.update({'font.size': 16})
-    fig, ax = plt.subplots()
-
-    for tr in timing_results:
-        if tr.fallback_mode == "GPU":
-            dat = tr.yts_nd
-        else:
-            dat = tr.yinsts_nd
-
-        ax.errorbar(tr.xs_nd,
-                    [y[0] for y in dat],
-                    yerr=[y[1] for y in dat],
-                    label="{}, {}, {}, TGS={} ({})".format(tr.gpu, tr.back, tr.kernel, tr.opt_tg, tr.fallback_mode),
-                    marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
-                    )
-
-    ax.set_xlabel("theoretical num threads dispatched")
-    ax.set_ylabel("transpose/sec")
-    ax.set_xscale("log", basex=2)
-    ax.set_yscale("log", basey=10)
-    # Shrink current axis by 20%
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-
-    # Put a legend to the right of the current axis
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    ax.set_title("GPU timing query results (w/ CPU fallback)")
-    fig.set_size_inches(14, 8.5)
-    fig.savefig(os.path.join(cwd, "plot-varying-nds-fallback-queries.png"), bbox_inches="tight")
-
-
-plot_varying_tg_using_gpu_queries(trs)
-plot_varying_tg_using_cpu_queries(trs)
-plot_varying_nd_using_gpu_queries(trs)
-plot_varying_nd_using_cpu_queries(trs)
-# plot_varying_tg_using_gpu_queries_with_cpu_query_fallback(trs)
-# plot_varying_nd_using_gpu_queries_with_cpu_query_fallback(trs)
+amd_vs_nvd_loading_comparison_kernels = ["Threadgroup1d32", "Shuffle32"]
+plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in amd_vs_nvd_loading_comparison_kernels and (("AMD" in tr.gpu) or ("NVD" in tr.gpu))], "amd_vs_nvd_loading_comparison")
 
 plt.close("all")

@@ -40,7 +40,7 @@ fn main() {
         TaskGroupDefn {
             num_cpu_execs,
             num_gpu_execs,
-            kernel_type: KernelType::Threadgroup1D,
+            kernel_type: KernelType::Threadgroup1d32,
         }
     );
     test_env.time_task_group();
@@ -50,7 +50,27 @@ fn main() {
         TaskGroupDefn {
             num_cpu_execs,
             num_gpu_execs,
-            kernel_type: KernelType::Threadgroup2D,
+            kernel_type: KernelType::Threadgroup1d8,
+        }
+    );
+    test_env.time_task_group();
+    test_env.save_results();
+
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::Threadgroup2d32,
+        }
+    );
+    test_env.time_task_group();
+    test_env.save_results();
+
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::Threadgroup2d8,
         }
     );
     test_env.time_task_group();

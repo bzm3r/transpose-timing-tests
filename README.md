@@ -28,29 +28,35 @@ Flynn's taxonomy will not be considered useful in this article beyond providing 
 
 Modern GPU hardware is not only complex, but many of the relevant details are also closed-source. Thus, to understand understand program performance, programmers must rely on abstractions of this hardware. These abstractions in turn are strongly influenced by APIs (e.g. OpenGL or Vulkan) specifying the interaction between hardware and application.
 
-The most hardware abstraction, is unsurprisingly then, the one which APIs present front and center: that of threadgroups. In this model, a GPU's processors ("threads") can be thought of being divided into groups ("threadgroups"). The size of these threadgroups can be set by the application. Special programs called "shaders" (or, in the context of general-purpose GPU computing, "kernels") are executed by each thread within the threadgroup. The instructions specified by the kernel are the same across the threads, but a thread can access different memory for these instructions to work upon. Furthermore, threadgroups can include branching control flow statements (e.g. if statements), which can also cause particular threads within a threadgroup to be executing different instructions than another thread, at any given time.
+The commonly used mental model of GPU hardware sees a GPU's processors as essentially individual units ("threads
+") which can also be divided into groups ("threadgroups"), where the size of these threadgroups can be set by the
+ application
+ . Special programs called "shaders" (or, in the context of general-purpose GPU computing, "kernels") are executed by each thread within the threadgroup. The instructions specified by the kernel are the same across the threads, but a thread can access different memory for these instructions to work upon. Furthermore, threadgroups can include branching control flow statements (e.g. if statements), which can also cause particular threads within a threadgroup to be executing different instructions than another thread, at any given time.
 
 ![threadgroup-model](./diagrams/threadgroup-model.png)
 
-While this model captures the gist of "what is a GPU?", it is incomplete. To build a more refined mental model, one must start by considering how data flows within a GPU, i.e. understanding hierarchy within which GPU memory is organized.
+While this model captures the gist of a GPU's architecture, it is incomplete. To build a more refined mental model, one
+ must start by
+ considering how data flows within a GPU, i.e. understanding hierarchy within which GPU memory is organized.
 
 ![memory-hierarchy](./diagrams/memory-hierarchy.png)
 
 
 Each thread has associated with it registers which store data using a [configuration of logic gates](https://en.wikipedia.org/wiki/Flip-flop_(electronics)) called a flip-flop. This storage is expensive in the energy required to maintain it, but powerful in terms of performance. However, its capacity is also quite small (**Question 0:** Why? Probably because we want to keep each thread close by on the chip, and the more of these we have, the hotter everything would get?). Direct access to these registers was unavailable to programmers until quite recently, when APIs began to expose them via subgroup operations.  
 
-A subgroup is a group of threads which are tightly associated due to hardware architecture, in that they can access each others' registers efficiently. A change of terminology is in order: we will call threads within a subgroup "lanes", taking this terminology from the SIMD-world. The term "lane" is not overloaded by this decision, as a subgroup *is* a SIMD unit. Crucially, all the lanes within a subgroup must be executing the same instruction. If due to branching statements two lanes within a subgroup "diverge" (so that one is performing a different instruction than the other), then one of the lanes is temporarily made inactive! In other words, if only two lanes were available, the device would temporarily become SISD.
+A subgroup is a group of threads which are tightly associated due to hardware architecture; the relevant side effect of this is that subgroup threads can access each others' registers efficiently. A change of terminology is in order: we will call threads within a subgroup "lanes", taking this terminology from the SIMD-world. The term "lane" is not overloaded by this decision, as a subgroup *is* a SIMD unit. Since a subgroup is a SIMD unit, all the lanes within a subgroup must be executing the same instruction. If due to branching statements two lanes within a subgroup must "diverge" (so that one would end up performing a different instruction than the other), then one of the lanes is temporarily made inactive. Thus, at all times, either a thread is inactive, or it is executing the same instruction as all active threads. 
 
+One level up in the hierarchy, we have threadgroups, which can be profitably understood as a group of subgroups. Subgroups within a threadgroup have access to "threadgroup shared memory", allowing for data to be shared between subgroups. While threadgroup shared memory has greater storage capacity than registers, it also has lower bandwidth, and greater latency, making it less time-performant in comparison. Note that threadgroup shared memory storage is also register (flip-flop) based.
 
-One level up in the hierarchy, we have threadgroups, which can be profitably understood as a group of subgroups. Perhaps a change in terminology is in order for threadgroups, but let's restrict ourselves to one change in term per post; world domination one step at a time :). Subgroups within a threadgroup have access to "threadgroup shared memory", allowing for data to be shared between subgroups. While threadgroup shared memory has greater storage capacity, it also has lower bandwidth, and greater latency, making it less performant. Note that threadgroup shared memory storage is also register (flip-flop) based.
-
-On the top, we have global memory, which unlike the lower levels in the hierarchy, uses capacitors (DRAM) as storage elements. Global memory is accessible to all threadgroups on a device, but its performance characters mean that two threadgroups cannot communicate with each other on useful timescales. If the threads within a threadgroup can pass send messages to each other with a day's delay, it may take up to 10 days for messages to pass between threadgroups. You wouldn't want to have your threads sitting around, twiddling their thumbs, in that time, and thus design your programs to minimize dependency on inter-threadgroup communication. 
+On the top, we have global memory, which unlike the lower levels in the hierarchy, uses capacitors (DRAM) as storage elements. Global memory is accessible to all threadgroups on a device, but given its performance characteristics, two threadgroups cannot meaningfully communicate with each other on useful timescales. If the threads within a threadgroup can pass send messages to each other with a day's delay, it may take up to 10 days for messages to pass between threadgroups. You wouldn't want to have your threads sitting around, twiddling their thumbs, in that time, and thus design your programs to minimize dependency on inter-threadgroup communication. 
 
 ## Transposing bit matrices
 
-Before we jump into using our new-found understanding of threadgroups and subgroups to start kernels which transpose bit matrices, let us discuss how bit matrices will be reprsented in memory, and the general concept of the transposition algorithm for bit matrices.
+Before we jump into using our new-found understanding of threadgroups and subgroups to start writing kernels which transpose bit matrices, let us discuss how bit matrices will be reprsented in memory, and the general concept of the transposition algorithm for bit matrices.
 
-**Memory representation.** Recall that we are interested in transposing 32x32 bit matrices. Note that an unqualified unsigned integer is 32 bits wide. Therefore, a 32x32 bit matrix can be represented as an array of 32 unsigned integers. 
+### Memory representation 
+
+Recall that we are interested in transposing 32x32 bit matrices. Note that an unqualified unsigned integer is 32 bits wide. Therefore, a 32x32 bit matrix can be represented as an array of 32 unsigned integers. 
 
 ![bit-matrix](./diagrams/bit-matrix.png)
 
@@ -72,7 +78,7 @@ Note that when you are generating `M_16` from `M_32`, the `i`th row of `M_16` wi
 
 So, if you have 32 processors, the `i`th processor can read `M_32[(i + 16)%32]`, and "shuffle round" its bits, storing the result in a new array called `M_16`. The `i`th processor does its work independently of the other processors, so it is embarrassingly easy to parallelize this problem. Note that each processor will execute the exact same sequence of operations, but will have different input data (SIMD).
 
-For the other cases, the concept is the same, but one must be more careful with the indexing, and the bit shifting. All of this is implemented most plainly in the threadgroup based kernel's "shuffle round" function [`shuffle_round`](). Given some thread `i`, figuring out which row's data it should read is done on [this line](https://github.com/bzm3r/transpose-timing-tests/blob/74559f2ecc76d1ee65880eb5b77585059e0e1090/kernels/templates/transpose-threadgroup-template.comp#L60).
+For the other cases, the concept is the same, but one must be more careful with the indexing, and the bit shifting. All of this is implemented most plainly in the threadgroup based kernel's "shuffle round" function [`shuffle_round`](https://github.com/bzm3r/transpose-timing-tests/blob/85937fc84ae7ba49210255e54059d844e847a1c9/kernels/templates/transpose-threadgroup1D-template.comp#L19). Given some thread `i`, figuring out which row's data it should read is done on [this line](https://github.com/bzm3r/transpose-timing-tests/blob/85937fc84ae7ba49210255e54059d844e847a1c9/kernels/templates/transpose-threadgroup1D-template.comp#L58).
 
 
 **Aside:** for those unfamiliar with bitwise operations, please don't be afraid to understand the code. It will take some time, but the concepts are straightforward. Keep [Wolfram Alpha](https://www.wolframalpha.com/input/?i=BitAnd%5Bffff00_16%2C+ffff_16%5D) or [Rust Playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2018&gist=3db32d1ea9ff7b7e8a49a0b0b7292cf1) handy (I can't recommend Python, because it does not have unsigned integers, which causes all sorts of problems). Begin by carefully going through these points:
@@ -83,19 +89,33 @@ For the other cases, the concept is the same, but one must be more careful with 
 * Suppose that `y` is the `m`th power of 2 (`m >= 0`). Why is `x/y = x >> m` (`>>` is logical right shift)?
 * What is the bitwise xor of various numbers between 0 and 31 (inclusive), by various other numbers between 0 and 31 inclusive? What patterns can you see? (The Rust playground link may be helpful.)
 
-The SIMD kernel using the shuffle_xor operation also follows the same concept, but the `^` (bitwise xor) operation happens within the `subgroupShuffleXor` instruction. 
-
-The Shuffle+Threadgroup hybrid kernel generates `M_16` and `M_8` using threadgroups, and `M_4` to `M_1` using subgroups. It is particularly well suited to Intel devices, where the subgroup size is variable between 32 and 8, but is guaranteed to be at least as large as 8.
+The kernels (for transposing [8x8](https://github.com/bzm3r/transpose-timing-tests/blob/master/kernels/templates/transpose-shuffle8-template.comp) or [32x32](https://github.com/bzm3r/transpose-timing-tests/blob/master/kernels/templates/transpose-shuffle32-template.comp) matrices) using the SIMD `subgroupShuffleXor` operation also follows the same concept, but the `^` (bitwise xor) operation happens within the `subgroupShuffleXor` instruction:
+ ```
+ uint shuffle_round(uint a, uint m, uint s) {
+     uint b = subgroupShuffleXor(a, s); // XOR happens here
+     uint c;
+     if ((gl_SubgroupInvocationID & s) == 0) {
+         c = b << s;
+     } else {
+         m = ~m;
+         c = b >> s;
+     }
+     return (a & m) | (c & ~m);
+ } 
+```
+Note that something quite tricky is happening in `uint b = subgroupShuffleXor(a, s);`. This function seems like it is invocation-specific, and that `subgroupShuffleXor`'s output will depend only on the values for `a` passed by *this* invocation. Recall that lanes execute instructions in lockstep, and that subgroup operations allow access between registers of lanes within a subgroup. So, `subgroupShuffleXor` can (and does) take as input the values of `a` stored in the registers of each lane. In other words, it is acting on a *vector* of `a` values. 
+ 
+The hybrid kernel generates `M_16` and `M_8` using threadgroups, and `M_4` to `M_1` using subgroups. It is the only way in which we can use subgroups to some extent in transposing 32-bit matrices on Intel devices, where the subgroup size is variable between 32 and 8, but is guaranteed to be at least as large as 8.
 
 The SIMD ballot kernel uses a much simpler algorithm: for the `i`th row, it asks for the `i`th bit of all the processors (from `0` to `31`) inclusive (i.e. it effectively computes the `i`th column using the `subgroupBallot` operation). It stores the result as the row of the transposed matrix.
 
 ## Why bother with SIMD (subgroups)?
 
-Apart from the fact that the parallelization of the bit matrix transposition algorithm presented had a distinctly "Single Instruction Multiple Data" flavour to it, why else would we bother using subgroups?
+Apart from the fact that the parallelization of the bit matrix transposition algorithm presented had a distinctly "Single Instruction Multiple Data" flavour to it, why else would we bother using subgroups? Well, for better performance. 
 
-The answer is: better performance. In the threadgroup kernel, a bit matrix is loaded into threadgroup shared memory, and this is then accessed by all threads in the group as they do their calculation. Because of the `shuffle_round` function, we are able to avoid any if statements in transpose kernel, so we don't suffer from divergence due to branching (a major point necessary for performance whether or not you are using subgroups), but the GPU does have to organize reads of the threads from shared memory.
+In the threadgroup kernel, a bit matrix is loaded into threadgroup shared memory, and this is then accessed by all threads in the group as they do their calculation. The GPU does have to organize reads of the lanes in the threadgroup from shared memory. 
 
-On the other hand, in the shuffle kernel, a bit matrix (or two, if you are using an AMD machine with a subgroup size of 64) is loaded into the *fast* subroup-level registers. Lanes within the subgroup need not look up the data they need from threadgroup shared memory, but instead can take advantage of the close connection they have to the other registers in their subgroup. 
+On the other hand, in the SIMD-based kernels, a bit matrix (or two, if you are using an AMD machine with a subgroup size of 64) is loaded into the *fast* subroup-level registers. Lanes within the subgroup need not look up the data they need from threadgroup shared memory, but instead can take advantage of the close connection they have to the other registers in their subgroup. 
 
 ## Results
 

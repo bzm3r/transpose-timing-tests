@@ -138,7 +138,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
         let queue_group = gpu.queue_groups.first_mut().unwrap();
 
         let interpretation = match task.kernel_type {
-            KernelType::Shuffle8 => {
+            KernelType::Shuffle8 | KernelType::Threadgroup1d8 | KernelType::Threadgroup2d8 => {
                 Interpretation::B8
             },
             _ => {
@@ -544,7 +544,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
 
     pub fn set_task_group(&mut self, task_group_defn: TaskGroupDefn) {
         self.task_group = match task_group_defn.kernel_type {
-            KernelType::Threadgroup2D => {
+            KernelType::Threadgroup2d32 | KernelType::Threadgroup2d8 => {
                 let task_group_prefix = format!("{}-{}", self.backend, task_group_defn.kernel_type);
                 Some(TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),
@@ -624,7 +624,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     })
                 }
             }
-            KernelType::Threadgroup1D | KernelType::HybridShuffle32 => {
+            KernelType::Threadgroup1d32 | KernelType::Threadgroup1d8 | KernelType::HybridShuffle32 => {
                 let task_group_prefix = format!("{}-{}", self.backend, task_group_defn.kernel_type);
                 Some(TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),

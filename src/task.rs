@@ -9,8 +9,10 @@ use crate::file_utils::is_relatively_fresh;
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum KernelType {
-    Threadgroup1D,
-    Threadgroup2D,
+    Threadgroup1d8,
+    Threadgroup2d8,
+    Threadgroup1d32,
+    Threadgroup2d32,
     Ballot32,
     Shuffle32,
     Shuffle8,
@@ -20,12 +22,14 @@ pub enum KernelType {
 impl fmt::Display for KernelType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            KernelType::Threadgroup1D => write!(f, "{}", "threadgroup1D"),
-            KernelType::Threadgroup2D => write!(f, "{}", "threadgroup2D"),
-            KernelType::Ballot32 => write!(f, "{}", "ballot32"),
-            KernelType::Shuffle32 => write!(f, "{}", "shuffle32"),
-            KernelType::Shuffle8 => write!(f, "{}", "shuffle8"),
-            KernelType::HybridShuffle32 => write!(f, "{}", "hybrid_shuffle32"),
+            KernelType::Threadgroup1d8 => write!(f, "{}", "Threadgroup1d8"),
+            KernelType::Threadgroup2d8 => write!(f, "{}", "Threadgroup2d8"),
+            KernelType::Threadgroup1d32 => write!(f, "{}", "Threadgroup1d32"),
+            KernelType::Threadgroup2d32 => write!(f, "{}", "Threadgroup2d32"),
+            KernelType::Ballot32 => write!(f, "{}", "Ballot32"),
+            KernelType::Shuffle32 => write!(f, "{}", "Shuffle32"),
+            KernelType::Shuffle8 => write!(f, "{}", "Shuffle8"),
+            KernelType::HybridShuffle32 => write!(f, "{}", "HybridShuffle32"),
         }
     }
 }
@@ -98,9 +102,9 @@ impl Task {
             .expect(&format!("could not find kernel template at path: {}", &tp));
 
         match self.kernel_type {
-            KernelType::Shuffle8 | KernelType::Shuffle32 | KernelType::HybridShuffle32 | KernelType::Threadgroup1D | KernelType::Ballot32 => {
+            KernelType::Shuffle8 | KernelType::Shuffle32 | KernelType::HybridShuffle32 | KernelType::Threadgroup1d32 | KernelType::Ballot32 => {
                 if self.workgroup_size[1] > 1 {
-                    panic!("does not make sense to have Y-dimension in workgroup size for non-Threadgroup2D kernels");
+                    panic!("does not make sense to have Y-dimension in workgroup size for non-Threadgroup2d32 kernels");
                 }
             }
             _ => {}
