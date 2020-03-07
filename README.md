@@ -186,32 +186,24 @@ As can be seen above, pure-shuffle 16x8x8 bit matrix transposition performance o
 
 As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs. 
 
-## Intel HD 520
+## Discussion
+
+## Devices tested 
+
+### Intel HD 520
 
 (References: [WikiChip](https://en.wikichip.org/wiki/intel/microarchitectures/gen9#Gen9))
 
-This is a Skylake series chip released in 2015. This GPU utilizes the **Gen9 GT2** microarchitecture, which has two major components: the **Slice**, and the **Unslice**. The Slice is the computational heart of the GPU as it contains the computing units. The Unslice is essentially the interface between the Slice, and the outside world, although it does have some fixed function capabilities of its own; that is, it contains some specialized non-programmable hardware to execute common graphics related tasks. Importantly, the Unslice contains hardware which controlling the dispatch of instructions to the Slice.   
+This GPU utilizes the **Gen9 GT2** microarchitecture, which has two major components: the **Slice**, and the **Unslice**. The Slice is the computational heart of the GPU as it contains the computing units. The Unslice mostly handles the interface between the Slice and the outside world. Importantly, the Unslice contains hardware which controlling the dispatch of instructions to the Slice.   
 
-Each slice in a Gen9 GT2 architecture consists of 3 **subslices**, each with 8 **execution units**. An execution unit has access to 128 32-byte SIMD-8 registers. Let's unpack what "128 32-byte SIMD-8 registers" means: there are 128 registers, each of size 32 bytes. These 32 bytes are divided into 8 addressable elements (i.e. elements which can be referred to using a pointer). Note that (32 bytes)/(8 elements) = (4 bytes per element), so each element is (4 bytes)x(8 bits per byte) = (32 bits) wide. These 8 elements together form a "SIMD-8 vector". [Section 5.3.0](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf)
+Each slice in a Gen9 GT2 architecture consists of 3 **subslices**, each with 8 **execution units**. An execution unit has access to 128 32-byte SIMD-8 registers. Let's unpack what "128 32-byte SIMD-8 registers" means: there are 128 registers, each of size 32 bytes. These 32 bytes are divided into 8 addressable elements (i.e. elements which can be referred to using a pointer). Note that (32 bytes)/(8 elements) = (4 bytes per element), so each element is (4 bytes)x(8 bits per byte) = (32 bits) wide. These 8 elements together form a SIMD-8 group of storage. [Section 5.3.0](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf)
 
-An execution unit has 7 "threads". There is terminology overload here, since an Intel Gen9 thread *is not* the same as an abstract GPU thread making up a threadgroup. Therefore, to be careful, we will say that each execution unit has 7 "Gen9-threads". Furthermore, since each Gen9-thread is an instruction stream, we will choose to refer to them simply as such. Every clock cycle, the execution unit's **Gen-9 thread arbiter** can select up to 4 out of the 7 instruction streams from which to read instructions. 
+An execution unit has 7 "threads". There is terminology overload here, since an Intel Gen9 "execution thread" *is not* the same as an abstract GPU thread making up a threadgroup. Therefore, to be careful, we will say that each execution unit has 7 "execution threads". Each execution thread is essentially an instruction stream. Every clock cycle, the execution unit's **Gen-9 thread arbiter** can select up to 4 out of the 7 instruction streams from which to read instructions. 
 
-An execution unit has 2 SIMD "floating point units" (FPUs), computation units which, contrary to their name, support both floating point and integer operations [Section 5.3.2](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf). 
+An execution unit has 2 SIMD "floating point units" (FPUs), computation units which, contrary to their name, support both floating point and integer operations [Section 5.3.2](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf). Each FPU contains 4 lanes, but an FPU acts like an 8-lane device. This is because of the following execution timeline with respect to the clock cycle: 
+* cycle 0: new instruction is loaded from 
 
-The shuffle and ballot kernels cannot be run on this device since they require a minimum subgroup size of 32, but it is not straightforward to force a subgroup size of 32 on Intel. It is worth noting that `gl_SubgroupSize` is  `32` on this device, even though the actual subgroup size can vary; thus, `gl_SubgroupSize` seems to give the maximum subgroup size a device can provide, rather than the actual subgroup size being provided. Although we cannot run the shuffle kernel, we can run a hybrid shuffle+threadgroup kernel, where `M_16` and `M_8` are generated using a threadgroup kernel, but `M_4` and below are generated using a subgroup kernel---note the mild performance improvement in the hybrid kernel. Key observations for the Intel HD 520:
+The shuffle and ballot kernels cannot be run on this device since they require a minimum subgroup size of 32, but it is not straightforward to force a subgroup size of 32 on Intel. It is worth noting that `gl_SubgroupSize` is  `32` on this device, even though the actual subgroup size can vary; thus, `gl_SubgroupSize` seems to give the maximum subgroup size a device can provide, rather than the actual subgroup size being provided. Although we cannot run the shuffle kernel, we can run a hybrid shuffle+threadgroup kernel, where `M_16` and `M_8` are generated using a threadgroup kernel, but `M_4` and below are generated using a subgroup kernel---note the mild performance improvement in the hybrid kernel. 
 
-| Observation  | Analysis |
-| ------------- | ------------- |
-| **threadgroup kernel:** a TG size of 64 (2<sup>6</sup>) provides the optimal transpose rate when using a TG kernel, but increasing the TG size beyond this decreases performance exponentially, reaching its worst at a size of 512 (2<sup>9</sup>) | ?  |
-| **threadgroup kernel:** performance at TG sizes of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) is the same | ?  |
-| **hybrid-shuffle kernel:** has mildly better performance than the TG kernel | ?  |
-| **hybrid-shuffle kernel:** performance is essentially insensitive to TG size, but begins to drop off noticeably at TG sizes of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) | ? |
+### AMD RX 570
 
-**AMD RX 570.** It is important to note than on AMD devices such as the RX 570, there are 64 lanes in a subgroup. Key observations for the AMD RX 570:
-
-| Observation  | Analysis |
-| ------------- | ------------- |
-| **threadgroup kernel:** a TG size of 64 (2<sup>6</sup>) provides the optimal transpose rate when using a TG kernel, but increasing the TG size beyond this decreases performance exponentially | ?  |
-| **threadgroup kernel:** performance at a TG size of 32 (2<sup>5</sup>) is noticeably worse than performance at a TG size of 64 (2<sup>6</sup>) | ?  |
-| **hybrid-shuffle kernel:** has mildly better performance than the TG kernel | ?  |
-| **hybrid-shuffle kernel:** performance is essentially insensitive to TG size, but begins to drop off noticeably at TG sizes of 512 (2<sup>9</sup>) and 1024 (2<sup>10</sup>) | ? |

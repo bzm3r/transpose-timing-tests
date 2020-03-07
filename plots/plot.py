@@ -168,6 +168,7 @@ def plot_varying_tg_using_gpu_queries(timing_results, save_name):
 
     # Put a legend to the right of the current axis
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.grid(which="both", axis="both")
     ax.set_title("GPU timing query results, num BMs={}".format(timing_results[0].fixed_bm_size))
     fig.set_size_inches(14, 8.5)
     fig.savefig(os.path.join(cwd, "{}.png".format(save_name)), bbox_inches="tight")
@@ -194,6 +195,7 @@ def plot_varying_nd_using_gpu_queries(timing_results, save_name):
 
     # Put a legend to the right of the current axis
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.grid(which="both", axis="both")
     ax.set_title("GPU timing query results")
     fig.set_size_inches(14, 8.5)
     fig.savefig(os.path.join(cwd, "{}.png".format(save_name)), bbox_inches="tight")
