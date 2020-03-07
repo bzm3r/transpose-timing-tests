@@ -119,9 +119,21 @@ On the other hand, in the SIMD-based kernels, a bit matrix (or two, if you are u
 
 ## Results
 
-In the first experiment, the number of bit matrices uploaded is held constant, while the size of the threadgroup is changed between 32 (2<sup>5</sup>) and 1024 (2<sup>10</sup>):
+### What did we measure?
 
-![](https://i.imgur.com/FVdHRQM.png)
+We used timestamp queries exposed by the Vulkan API to measure how long it took to the dispatch command in the [command buffer](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L401) submitted to the GPU. This query returns the "ticks" passed until the query was made. Therefore, putting two timestamp queries ([first](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L359), [second](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L359)) around the [dispatch command](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L368) should allow us to estimate of how long it took to GPU to execute the dispatch, in ticks. 
+
+The time period associated with a tick is device dependent. These periods can be obtained by looking at `timestampPeriod` field of the device limits presented by the Vulkan API (e.g. for [Nvidia GTX 1060](https://vulkan.gpuinfo.org/displayreport.php?id=7922#limits)). On Nvidia devices we used, it is 1 ns, on the AMD device we used, 40 ns, and on the Intel devices we used around 80 ns. This means that the timing measurements obtained for the Intel and AMD devices we tested will be much more conservative than those obtained for Nvidia devices.
+
+Given a dispatch time measurement `T`, we can normalize `T` by the number of matrices the GPU transposed---the number of matrices uploaded to the GPU multiplied by the number of times they were transposed. The inverse of this normalized quantity is the rate at which transposes were executed. We present [this quantity](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L717) in units of `transpose/second`.
+
+We first compare how the subgroup-based kernels compare with the threadgroup-based kernels:
+
+![](./plots/simd_tg_comparison.png)
+
+Key observations: 
+* While the subgroup-based kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on all devices, the effect is particularly pronounced on Nvidia devices. On AMD devices, the performance gain is marginal at best.
+
 
 ### Intel HD 520
 
