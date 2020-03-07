@@ -213,4 +213,10 @@ plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in tg_dim_compa
 amd_vs_nvd_loading_comparison_kernels = ["Threadgroup1d32", "Shuffle32"]
 plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in amd_vs_nvd_loading_comparison_kernels and (("AMD" in tr.gpu) or ("NVD" in tr.gpu))], "amd_vs_nvd_loading_comparison")
 
+intel_loading_comparison_kernels = ["Threadgroup1d32", "HybridShuffle32", "Shuffle8"]
+plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in intel_loading_comparison_kernels], "intel_loading_comparison")
+
+hybrid_shuffle_kernels = ["HybridShuffle32", "Threadgroup1d32", "Shuffle32"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in hybrid_shuffle_kernels], "hybrid_shuffle")
+
 plt.close("all")

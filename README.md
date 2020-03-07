@@ -1,12 +1,16 @@
 # Analyzing results from timing bit matrix  transpositions on the GPU
 
-Raph Levien's planned performance improvements to [`piet-metal`]() will rely on efficiently transposing 32x32 bit matrices. Therefore, it will be of interest to examine the performance of programs designed to execute this task. In particular, in this post, we will investigate **time performance**. 
+We are currently experimenting with using GPU compute to do performant 2D graphics. To this end, we wondered to what extent we coud take advantage of the ultimately SIMD nature of the modern GPU. 
 
-The bit matrix transposition problem can be addressed, broadly speaking, with two types of programs:
+In particular, we wondered if one our kernels, which needs to quickly transpose 32x32 bit matrices, might benefit from these techniques. 
+
+Therefore, we are interested in examining the **time performance** of kernels designed to execute this task. 
+
+In general, the bit matrix transposition problem can be addressed on the GPU using two types of programs:
 1. Classical **threadgroup** ("warp", "workgroup") based programs, relying on shared memory available to threads within the group.
-2. SIMD ("subgroup", "wavefront") based programs relying on rapid sharing of registers associated with the lanes making up the SIMD group.
+2. **SIMD** ("subgroup", "wavefront") based programs relying on rapid sharing of registers associated with the lanes making up the SIMD group.
 
-In general, we will see that the SIMD class of programs will outperform threadgroup-based programs. However, we will also see that the timing results reveal much about the underlying GPU hardware.
+Our experiments comparing these two types of programs reveal that , while SIMD-programming techniques outperform threadgroup-programming, the performance gain is device dependent. In general, the timing results can tell us some interesting things about the actual hardware of various GPUs.
 
 ## Introduction to SIMD
 
@@ -121,21 +125,68 @@ On the other hand, in the SIMD-based kernels, a bit matrix (or two, if you are u
 
 ### What did we measure?
 
-We used timestamp queries exposed by the Vulkan API to measure how long it took to the dispatch command in the [command buffer](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L401) submitted to the GPU. This query returns the "ticks" passed until the query was made. Therefore, putting two timestamp queries ([first](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L359), [second](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L359)) around the [dispatch command](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L368) should allow us to estimate of how long it took to GPU to execute the dispatch, in ticks. 
+We used timestamp queries exposed by the Vulkan API to measure how long it took to execute the dispatch command in the [command buffer](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L401) submitted to the GPU. A timestamp query's responds with the time "ticks" passed at the current moment, with respect to some reference to some earlier time. Therefore, putting two timestamp queries ([first](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L359), [second](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L359)) around the [dispatch command](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L368) should allow us to estimate of how long it took to GPU to execute the dispatch, in ticks. 
 
 The time period associated with a tick is device dependent. These periods can be obtained by looking at `timestampPeriod` field of the device limits presented by the Vulkan API (e.g. for [Nvidia GTX 1060](https://vulkan.gpuinfo.org/displayreport.php?id=7922#limits)). On Nvidia devices we used, it is 1 ns, on the AMD device we used, 40 ns, and on the Intel devices we used around 80 ns. This means that the timing measurements obtained for the Intel and AMD devices we tested will be much more conservative than those obtained for Nvidia devices.
 
 Given a dispatch time measurement `T`, we can normalize `T` by the number of matrices the GPU transposed---the number of matrices uploaded to the GPU multiplied by the number of times they were transposed. The inverse of this normalized quantity is the rate at which transposes were executed. We present [this quantity](https://github.com/bzm3r/transpose-timing-tests/blob/7168aadef2995fc053023aeb88530816711dbd68/src/gpu.rs#L717) in units of `transpose/second`.
 
-We first compare how the subgroup-based kernels compare with the threadgroup-based kernels:
+### "1D" threadgroup kernel vs. "2D" version
+
+![](./plots/tg_dim_comparison.png)
+
+Initially, we had written threadgroup kernels so that the workgroup was [two dimensional](https://github.com/bzm3r/transpose-timing-tests/blob/0992b1f2004ead8ac118be5b53dffe375bc7b863/kernels/templates/transpose-Threadgroup2d32-template.comp#L4). The x-dimension is the number of bit matrices to be processed by a threadgroup, and the y-dimension the number of `u32`s we need to store a 32x32 bit matrix (the rows of the matrix). Since we thought dimensionality within a threadgroup was syntactic sugar around what is in the end a 1D "list" of threads within a group, we were surprised to find that performance of this kernel degraded as we increased threadgroup size, on all devices. This is in stark contrast to the [1D version](https://github.com/bzm3r/transpose-timing-tests/blob/0992b1f2004ead8ac118be5b53dffe375bc7b863/kernels/templates/transpose-Threadgroup1d32-template.comp#L4) of this kernel.
+###
+
+### Subgroup kernels, vs. threadgroup kernels
+We compared perfmance of subgroup-based kernels compare with that of threadgroup-based kernels, when varying threadgroup size:
 
 ![](./plots/simd_tg_comparison.png)
 
-Key observations: 
-* While the subgroup-based kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on all devices, the effect is particularly pronounced on Nvidia devices. On AMD devices, the performance gain is marginal at best.
+While the subgroup-based kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on both AMD and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On AMD devices, the performance gain comparitively marginal. On the other hand, effective utilization of the Nvidia RTX 2060 (a high end Nvidia GPU) for the bit matrix transposition task with respect to the Nvidia GTX 1060 relies on the subgroup method.
 
+### Effect of payload size
 
-### Intel HD 520
+![](./plots/amd_vs_nvd_loading_comparison.png)
+
+We size the [number of threadgroups](https://github.com/bzm3r/transpose-timing-tests/blob/0992b1f2004ead8ac118be5b53dffe375bc7b863/src/gpu.rs#L317) to be [dispatched](https://github.com/bzm3r/transpose-timing-tests/blob/0992b1f2004ead8ac118be5b53dffe375bc7b863/src/gpu.rs#L368) based on the number of matrices that we plan on transposing; i.e. the payload size.
+
+The number of threads we theoretically call upon is thus equivalent to the size of a threadgroup in threads, multiplied by the number of threadgroups dispatched. A device may not have the theoretical number of threads we dispatched physically available, so will need to divvy up the payload amongst the threadgroups it does have available.  
+
+Varying the payload size can tell us:
+* (at low dispatch size) the relative performance of a single lane on a particular device with respect to that of another device
+* (at increasing dispatch size) the maximum number of lanes the device is able to muster, before being forced to divvy up tasks between this number of threads. 
+
+Comparing Nvidia devices alone, individual lane performance between the Nvidia GTX 1060 (mid-tier GPU) and the Nvidia RTX 2060 (high end GPU) is comparable. At large payload sizes, the RTX 2060 begins to dominate as it can muster many more lanes at the same time than the GTX 1060.  
+
+Similarly, while Nvidia GTX 1060's lanes individually outperform those of the AMD RX 570's, it cannot muster as many lanes as the AMD device can at one time. Thus, the AMD device is slightly more performant when dealing with large payloads.  
+
+### SIMD on Intel devices
+
+It is difficult to tranpose 32x32 bit matrices on Intel using the relatively simple algorithms we have presented so far. This is because the Intel GPUs we had at hand (Intel HD 520 and Intel HD 630) are fundamentally 8-lane wide SIMD devices. While one can operate these devices logically as 16-lane wide, or 32-lane wide SIMD devices, the logical width is a transparent choice available to the programmer. Rather, it is an internal decision made by the Intel device's assembly compiler. Therefore, for ease of experimentation, we decided to study:
+
+* hybrid shuffling: where `M_16` and `M_8` are generated using threadgroup logic, but `M_4` and below are generated using SIMD shuffles. 
+* transposition of 16 8x8 bit matrices using SIMD shuffles alone; 16 8x8 bit matrices fit inside one 32x32 bit matrix, so we need not fiddle with our data representation or reported metric (`transpose/sec`) too much. We consider a `transpose` to simply be the operation of transposing 16 8x8 bit matrices. 
+
+![](./plots/intel_8vs32_comparison.png)
+
+![](./plots/hybrid_shuffle.png)
+
+To our surprise, hybrid-shuffle methods are actually less performant than pure threadgroup methods on Intel devices. On Nvidia and AMD devices, they are middle of the road.
+
+On the other hand, pure shuffle methods (applied to 16x8x8) bit matrices (the `Shuffle8` kernel) have astonishingly good performance.
+
+![](./plots/shuffle_8vs32_comparison.png)
+
+As can be seen above, pure-shuffle 16x8x8 bit matrix transposition performance on Intel is around the same order of magnitude as 16x8x8 pure-shuffling on Nvidia or AMD devices!
+
+### Effect of payload size on Intel devices
+
+![](./plots/intel_loading_comparison.png)
+
+Observing the effect of payload size on AMD devices does not suggest anything too remarkable. As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs. 
+
+## Intel HD 520
 
 (References: [WikiChip](https://en.wikichip.org/wiki/intel/microarchitectures/gen9#Gen9))
 
