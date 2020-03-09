@@ -151,7 +151,7 @@ While the subgroup-based kernel (`Shuffle32`) outperforms the threadgroup-based 
 
 We size the [number of threadgroups](https://github.com/bzm3r/transpose-timing-tests/blob/0992b1f2004ead8ac118be5b53dffe375bc7b863/src/gpu.rs#L317) to be [dispatched](https://github.com/bzm3r/transpose-timing-tests/blob/0992b1f2004ead8ac118be5b53dffe375bc7b863/src/gpu.rs#L368) based on the number of matrices that we plan on transposing; i.e. the payload size.
 
-The number of threads we theoretically call upon is thus equivalent to the size of a threadgroup in threads, multiplied by the number of threadgroups dispatched. A device may not have the theoretical number of threads we dispatched physically available, so will need to divvy up the payload amongst the threadgroups it does have available.  
+The number of lanes we theoretically call upon is thus equivalent to the size of a threadgroup in lanes, multiplied by the number of threadgroups dispatched. A device may not have the theoretical number of lanes we dispatched physically available, so it will divvy up the payload amongst the threadgroups it does have available.  
 
 Varying the payload size can tell us:
 * (at low dispatch size) the relative performance of a single lane on a particular device with respect to that of another device
@@ -186,24 +186,53 @@ As can be seen above, pure-shuffle 16x8x8 bit matrix transposition performance o
 
 As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs. 
 
-## Discussion
+### Device specific notes
 
-## Devices tested 
+In this section, we'll discuss why performance on the loading graphs starts to taper off when it does, for the Intel HD 520, the AMD RX 570, the Nvidia GTX 1060, and the Nvidia RTX 2060. The Intel HD 630 has a similar design to the HD 520, so is not discussed separately in detail.
 
-### Intel HD 520
+#### Intel HD 520
 
 (References: [WikiChip](https://en.wikichip.org/wiki/intel/microarchitectures/gen9#Gen9))
 
 This GPU utilizes the **Gen9 GT2** microarchitecture, which has two major components: the **Slice**, and the **Unslice**. The Slice is the computational heart of the GPU as it contains the computing units. The Unslice mostly handles the interface between the Slice and the outside world. Importantly, the Unslice contains hardware which controlling the dispatch of instructions to the Slice.   
 
-Each slice in a Gen9 GT2 architecture consists of 3 **subslices**, each with 8 **execution units**. An execution unit has access to 128 32-byte SIMD-8 registers. Let's unpack what "128 32-byte SIMD-8 registers" means: there are 128 registers, each of size 32 bytes. These 32 bytes are divided into 8 addressable elements (i.e. elements which can be referred to using a pointer). Note that (32 bytes)/(8 elements) = (4 bytes per element), so each element is (4 bytes)x(8 bits per byte) = (32 bits) wide. These 8 elements together form a SIMD-8 group of storage. [Section 5.3.0](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf)
+Each slice in a Gen9 GT2 architecture consists of 3 **subslices**, each with 8 **execution units**. Each execution unit has 7 "threads". Every clock cycle, the execution unit's **thread arbiter** can select up to 4 out of the 7 threads from which to read instructions to pass to the FPUs/ALUs. **Question:** there do not seem to be enough ALUs to handle 4 instructions every clock cycle? Furthermore, an ALU only takes an instruction every 2 clock cycles, so why doesn't the thread arbiter make a choice of 4 instructions every 2 clock cycles?  
 
-An execution unit has 7 "threads". There is terminology overload here, since an Intel Gen9 "execution thread" *is not* the same as an abstract GPU thread making up a threadgroup. Therefore, to be careful, we will say that each execution unit has 7 "execution threads". Each execution thread is essentially an instruction stream. Every clock cycle, the execution unit's **Gen-9 thread arbiter** can select up to 4 out of the 7 instruction streams from which to read instructions. 
+An execution unit has 2 SIMD "floating point units" (FPUs), also known as "arithmetic logic units" (ALUs). These are computation units which, contrary to their name, support both floating point and integer operations [Section 5.3.2](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf). Depending on the type of an instruction, it is executed by one or the other of the ALUs (see [slides 54 and 55](./ref-docs/Intel-Graphics-Architecture-ISA-and-microarchitecture.pdf)). In our use case, we expect ALU0 to be utilized. ALU0, like ALU1, has 4 lanes, but acts like an 8-lane device for two reasons:
+* an instruction is fed to a 4 lane FPU every two cycles. In the second cycle, the instruction that was received in the first cycle is re-executed, on 4 different inputs. Thus, a total of 8 inputs are processed in the two cycles;
+* FPUs have access to 32-byte SIMD-8 registers. These are called SIMD-8 registers because the 32 bytes are divided into 8 accessible elements. Note that (32 bytes)/(8 elements) = (4 bytes per element), so each element is (4 bytes)x(8 bits per byte) = (32 bits) wide. These 8 elements together form a SIMD-8 group of storage. [Section 5.3.0](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf)
 
-An execution unit has 2 SIMD "floating point units" (FPUs), computation units which, contrary to their name, support both floating point and integer operations [Section 5.3.2](https://en.wikichip.org/w/images/a/a0/The-Compute-Architecture-of-Intel-Processor-Graphics-Gen9-v1d0.pdf). Each FPU contains 4 lanes, but an FPU acts like an 8-lane device. This is because of the following execution timeline with respect to the clock cycle: 
-* cycle 0: new instruction is loaded from 
+Note that ALU0 is a physical rather than logical SIMD-8 device, because the hardware is fixed to always processes a minimum of 8 inputs every 2 clock cycles. ALU0 can logically act as a SIMD-16 device, over 4 clock cycles, or as a SIMD-32 device, over 8 clock cycles. Thus, Intel devices have a subgroup size of at least 8, up to 32.
 
 The shuffle and ballot kernels cannot be run on this device since they require a minimum subgroup size of 32, but it is not straightforward to force a subgroup size of 32 on Intel. It is worth noting that `gl_SubgroupSize` is  `32` on this device, even though the actual subgroup size can vary; thus, `gl_SubgroupSize` seems to give the maximum subgroup size a device can provide, rather than the actual subgroup size being provided. Although we cannot run the shuffle kernel, we can run a hybrid shuffle+threadgroup kernel, where `M_16` and `M_8` are generated using a threadgroup kernel, but `M_4` and below are generated using a subgroup kernel---note the mild performance improvement in the hybrid kernel. 
 
-### AMD RX 570
+From the loading graphs, we see that performance begins to taper off on the Intel devices when approximately 2<sup>12<\sum> threads are dispatched. A possible explanation is given by the following calculation (See slide 45 in the [Gen9 microarchitecture presentation](./ref-docs/Intel-Graphics-Architecture-ISA-and-microarchitecture.pdf)): the total number of lanes available is 24 execution units x 7 threads x 32 SIMD lanes, which is approximately 2<sup>12<\sum> lanes. 
 
+**Question:** why is each thread assumed to be connected to 32 SIMD lanes, when there is technically only one SIMD-32 capable ALU (ALU0) available to it?
+
+**Question:** instructions are selected from only 4 out of 7 threads every clock cycle, so why does the calculation suppose that the 7 threads are concurrently active? 
+
+#### AMD RX 570
+
+AMD RX 570 is based on the Graphics Core Next 4.0 microarchitecture, which is described in the [this presentation, from slides 23 to 35](./ref-docs/gdc_2018_sponsored_taking_the_red_pill.pptx) presentation. Unlike Intel devices, far less about AMD/Nvidia devices is documented. So I only note these high level observations: 
+* AMD machines have "shader engines", each containing "compute units";
+* each compute unit has 4 SIMD units, each a 16-lane device;
+* each SIMD unit executes a different set of instructions, and actually behaves like a SIMD-64 device (similar to what happens on Intel, where a 4 lane SIMD unit behaves like a SIMD-8 device), since it executes an instruction over 4 consecutive cycles ([reference](https://gpuopen.com/amd-gcn-assembly-cross-lane-operations/)).
+
+The AMD RX 570 has 32 compute units. Therefore, it can theoretically muster 32x4x64 = 2<sup>13<\sup> lanes. On the loading graph with AMD device data, we see that `Shuffle32` performance starts to taper off after 2<sup>14<\sup> lanes are called for. Why we have that extra factor of 2 remains a mystery. 
+
+#### Nvidia GTX 1060
+
+The GTX 1060 is based on Nvidia's consumer (not datacenter) Pascal microarchitecture. It contains 1280 "cores" (analogous to AMD's "compute units"), organized in 10 "streaming multiprocessors" (analagous to AMD's "shader engines"). Each core is a [SIMD-32 ALU](https://devtalk.nvidia.com/default/topic/1022877/cuda-programming-and-performance/how-cuda-core-works-/). Therefore, we expect to have 1280x32 = 2<sup>12<\sup> lanes available to us. Pleasantly, this is precisely when `Shuffle32` performance starts to dip for the Nvidia 1060 on the loading graph.
+
+#### Nvidia RTX 2060
+ 
+ The RTX 2060 is based on Turing microarchitecture, the successor to Pascal. It has some dedicated hardware for "real time ray tracing", but the hardware we are interested, in the SIMD cores, remains roughly the same in conceptual design, although there are some changes which help with performance ([see Nvidia's Turing architecture whitepaper](./ref-docs/NVIDIA-Turing-Architecture-Whitepaper.pdf), and [Citadel's microbenchmarking of it](./ref-docs/Citadel-Nvidia-Turing-whitepaper.pdf)). It contains [1920](https://www.nvidia.com/en-us/geforce/news/nvidia-geforce-rtx-2060/) cores, so we expect performance to dip starting around 1920x32, which is close to 2<sup>16<\sup> lanes. The loading graphs however, show that the RTX 2060's performance starts to dip around 2<sup>14<\sup> lanes mustered. 
+ 
+ ## Conclusion
+ 
+While using subgroup operations does provide a performance boost, especially on Nvidia devices and possibly Intel devices (if subgroup size could be controlled), we do not think it is worth it to base our technology on them on them. This is because:
+
+1) Subgroup operations are not uniformly supported across graphics APIs. For example, DX12 does not support shuffle-XOR SIMD ops.
+
+2) The magnitude of the gain is device dependent, and may not be so large when the particular sub-problem we are testing is placed back within its original context.  

@@ -185,7 +185,7 @@ def plot_varying_nd_using_gpu_queries(timing_results, save_name):
                     marker=tr.marker, capsize=5, markersize=7.5, color=tr.line_color, ls=tr.line_style
                     )
 
-    ax.set_xlabel("theoretical num threads dispatched")
+    ax.set_xlabel("theoretical number of lanes utilized")
     ax.set_ylabel("transpose/sec")
     ax.set_xscale("log", basex=2)
     ax.set_yscale("log", basey=10)
