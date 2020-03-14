@@ -200,8 +200,14 @@ def plot_varying_nd_using_gpu_queries(timing_results, save_name):
     fig.set_size_inches(14, 8.5)
     fig.savefig(os.path.join(cwd, "{}.png".format(save_name)), bbox_inches="tight")
 
-simd_tg_comparison_kernels = ["Shuffle32", "Threadgroup1d32"]
-plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in simd_tg_comparison_kernels], "simd_tg_comparison")
+dedicated_simd_tg_comparison_kernels = ["Shuffle32", "Threadgroup1d32"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in dedicated_simd_tg_comparison_kernels], "dedicated_simd_tg_comparison")
+
+integrated_hybrid_tg_comparison_kernels = ["HybridShuffle32", "Threadgroup1d32"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in integrated_hybrid_tg_comparison_kernels and "INT" in tr.gpu], "integrated_hybrid_tg_comparison")
+
+dedicated_hybrid_tg_comparison_kernels = ["HybridShuffle32", "Threadgroup1d32", "Shuffle32"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in dedicated_hybrid_tg_comparison_kernels and not "INT" in tr.gpu], "dedicated_hybrid_tg_comparison")
 
 intel_8vs32_comparison_kernels = ["Threadgroup1d8", "Threadgroup1d32", "HybridShuffle32", "Shuffle8"]
 plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in intel_8vs32_comparison_kernels and "INT" in tr.gpu], "intel_8vs32_comparison")
@@ -217,6 +223,9 @@ plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in amd_vs_nvd_l
 
 intel_loading_comparison_kernels = ["Threadgroup1d32", "HybridShuffle32", "Shuffle8"]
 plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in intel_loading_comparison_kernels], "intel_loading_comparison")
+
+intel_only_loading_comparison_kernels = ["Threadgroup1d8", "Shuffle8"]
+plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in intel_only_loading_comparison_kernels and "INT" in tr.gpu], "intel_only_loading_comparison")
 
 hybrid_shuffle_kernels = ["HybridShuffle32", "Threadgroup1d32", "Shuffle32"]
 plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in hybrid_shuffle_kernels], "hybrid_shuffle")
