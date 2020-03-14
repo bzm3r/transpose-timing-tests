@@ -34,7 +34,7 @@ Understanding why divergence is an issue becomes clear when the simple threadgro
 
 ![memory-hierarchy](./diagrams/memory-hierarchy.png)
 
-Each thread has associated with it registers which store data using a [configuration of logic gates](https://en.wikipedia.org/wiki/Flip-flop_(electronics)) called a flip-flop. This storage is expensive (i.e. low performance) in terms of the energy required to maintain it, but cheap (i.e. high performance) in terms of speed of access. However, its capacity is also quite small (**Question 0:** Why? Probably because we want to keep each thread close by on the chip, and the more of these we have, the hotter everything would get?). Direct access to these registers was unavailable to programmers until quite recently, when APIs (e.g. [Vulkan](https://www.khronos.org/blog/vulkan-subgroup-tutorial)) began to expose them via subgroup operations. Even before then, [those with deeper understanding of the hardware](http://www.joshbarczak.com/blog/?p=1120) were aware of the performance gains possible if the programmer had access to these regsiters. 
+Each thread has associated with it registers which store data using a [configuration of logic gates](https://en.wikipedia.org/wiki/Flip-flop_(electronics)) called a flip-flop. This storage is expensive (i.e. low performance) in terms of the energy required to maintain it, but cheap (i.e. high performance) in terms of speed of access. However, its capacity is also quite small (**Question 0:** Why? Probably because we want to keep each thread close by on the chip, and the more of these we have, the hotter everything would get?). Direct access to these registers was unavailable to programmers until quite recently, when APIs (e.g. [Vulkan](https://www.khronos.org/blog/vulkan-subgroup-tutorial)) began to expose them via "subgroup" operations. Even before then, [those with deeper understanding of the hardware](http://www.joshbarczak.com/blog/?p=1120) were aware of the performance gains possible if the programmer had access to these regsiters. 
 
 A subgroup is a group of threads tightly associated due to hardware architecture; specifically subgroup threads can access each others' registers efficiently. A change of terminology is in order: we will prefer to use the term "lane" for "thread", in order to draw us the abstraction we are constructing closer to the SIMD-world. The term "lane" is not overloaded by this decision, as a subgroup *is* a SIMD unit. Since a subgroup is a SIMD unit, all lanes within a subgroup must be executing the same instruction every clock cycle. If due to branching statements two lanes within a subgroup must "diverge" (so that one would end up performing a different instruction than the other), then one of the lanes is temporarily made inactive. Thus, at all times, either a thread is inactive, or it is executing the same instruction as all active threads. Clearly then, divergence affects performance, as it renders inactive some of the GPUs processing units.  
 
@@ -166,7 +166,9 @@ We compared perfmance of SIMD kernels compare with that of threadgroup-based ker
 
 ![](./plots/dedicated_simd_tg_comparison.png)
 
-While the SIMD kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal. Note that effective utilization of the Nvidia RTX 2060 (a high end Nvidia GPU) for the bit matrix transposition task with respect to the Nvidia GTX 1060 relies on using SIMD techniques.
+While the SIMD kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. 
+
+Note that effective utilization of the Nvidia RTX 2060 (a high end Nvidia GPU) for the bit matrix transposition task with respect to the Nvidia GTX 1060 relies on using SIMD techniques.
 
 On the Intel devices, we could not run `Shuffle32`, as we could not guarantee that the compiler would choose a subgroup size of 32. Thus, we came up with a hybrid kernel which uses SIMD shuffles only for the lower order transpositions, and threadgroup-based thransposition otherwise:
 
@@ -175,6 +177,14 @@ On the Intel devices, we could not run `Shuffle32`, as we could not guarantee th
 We were surprised to find that the hybrid kernel underperformed the threadgroup kernel on Intel devices. On the dedicated devices, the hybrid shuffle behaved as we expected, with performance middling between threadgroup and shuffle kernels:
 
 ![](./plots/dedicated_hybrid_tg_comparison.png)
+
+### SIMD Shuffle kernel vs. SIMD Ballot kernel
+
+The performance of the `Ballot32` kernel is awful with respect to the `Shuffle32` kernel:
+
+![](./plots/dedicated_simd_tg_ballot_comparison.png)
+
+The loss in performance is particularly pronounced on the Nvidia devices. We think the poor performance is due to the branching in the [`Ballot32` kernel](https://github.com/bzm3r/transpose-timing-tests/blob/beede806503e3593cd7248f50541279ee7443831/kernels/templates/transpose-Ballot32-template.comp#L52).
 
 ### Effect of payload size
 
@@ -215,13 +225,15 @@ It is very interesting to note that pure-shuffle 16x8x8 bit matrix transposition
 
 As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs, as their performance begins to taper out earlier than the dedicated devices.  
 
-However, there is a particularly interesting detail that may not be apparent in the busy graph above, but should be in the following: 
+The picture looks similar if we restrict our attention entirely to transposition of 16x8x8 matrices, except for the stand-out performance of the `Shuffle8` kernel on Intel:
 
-![](./plots/intel_only_loading_comparison.png)
+![](./plots/tg8_shuffle8_loading_comparison.png)
 
 ### Device specific notes
 
 In this section, we'll discuss why performance on the loading graphs starts to taper off when it does, for the Intel HD 520, the AMD RX 570, the Nvidia GTX 1060, and the Nvidia RTX 2060. The Intel HD 630 has a similar design to the HD 520, so is not discussed separately in detail.
+
+In general, while we are able to come "close" (give or take a factor of 2) to the observed tapering points with the theoretical calculations, we are unable to predict the tapering off point exactly. This could be due to a variety of reasons, ranging from misinterpretation of archictectural specifications on our part, to undocumented hardware specific features. Still, the exercise itself is useful in understanding modern GPU architectures.
 
 #### Intel HD 520
 
@@ -240,10 +252,6 @@ Note that ALU0 is a physical rather than logical SIMD-8 device, because the hard
 The shuffle and ballot kernels cannot be run on this device since they require a minimum subgroup size of 32, but it is not straightforward to force a subgroup size of 32 on Intel. It is worth noting that `gl_SubgroupSize` is  `32` on this device, even though the actual subgroup size can vary; thus, `gl_SubgroupSize` seems to give the maximum subgroup size a device can provide, rather than the actual subgroup size being provided. Although we cannot run the shuffle kernel, we can run a hybrid shuffle+threadgroup kernel, where `M_16` and `M_8` are generated using a threadgroup kernel, but `M_4` and below are generated using a subgroup kernel---note the mild performance improvement in the hybrid kernel. 
 
 From the loading graphs, we see that performance begins to taper off on the Intel devices when approximately 2<sup>12</sup> threads are dispatched. A possible explanation is given by the following calculation (See slide 45 in the [Gen9 microarchitecture presentation](./ref-docs/Intel-Graphics-Architecture-ISA-and-microarchitecture.pdf)): the total number of lanes available is 24 execution units x 7 threads x 32 SIMD lanes, which is approximately 2<sup>12</sup> lanes. 
-
-**Question:** why is each thread assumed to be connected to 32 SIMD lanes, when there is technically only one SIMD-32 capable ALU (ALU0) available to it?
-
-**Question:** instructions are selected from only 4 out of 7 threads every clock cycle, so why does the calculation suppose that the 7 threads are concurrently active? 
 
 #### AMD RX 570
 
@@ -264,8 +272,18 @@ The GTX 1060 is based on Nvidia's consumer (not datacenter) Pascal microarchitec
  
  ## Conclusion
  
-While using subgroup operations does provide a performance boost, especially on Nvidia devices and possibly Intel devices (if subgroup size could be controlled), we do not think it is worth it to base our technology on them on them. This is because:
+While using SIMD operations do provide a performance boost on Nvidia devices and especially Intel devices, we will not base our immediate experiments on them. This is because:
 
-1) Subgroup operations are not uniformly supported across graphics APIs. For example, DX12 does not support shuffle-XOR SIMD ops.
+1) Subgroup operations are not uniformly supported across graphics APIs. For example, DX12 does not support the shuffle-XOR SIMD operation.
 
 2) The magnitude of the gain is device dependent, and may not be so large when the particular sub-problem we are testing is placed back within its original context.  
+
+There are many observations we have not tried to explain. Two that stand out to us:
+
+1) Why is performance the performance improvement when using subgroup operations on AMD RX 570 marginal?
+2) Why does the `Shuffle8` kernel on Intel devices see a performance jump at threadgroup sizes of 2<sup>8</sup>?
+
+We would love to hear from those who know how to explain observations we have not commented on (or perhaps, not even noticed)!
+
+
+

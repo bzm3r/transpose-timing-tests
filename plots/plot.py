@@ -224,10 +224,13 @@ plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in amd_vs_nvd_l
 intel_loading_comparison_kernels = ["Threadgroup1d32", "HybridShuffle32", "Shuffle8"]
 plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in intel_loading_comparison_kernels], "intel_loading_comparison")
 
-intel_only_loading_comparison_kernels = ["Threadgroup1d8", "Shuffle8"]
-plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in intel_only_loading_comparison_kernels and "INT" in tr.gpu], "intel_only_loading_comparison")
+tg8_shuffle8_loading_comparison_kernels = ["Threadgroup1d8", "Shuffle8"]
+plot_varying_nd_using_gpu_queries([tr for tr in trs if tr.kernel in tg8_shuffle8_loading_comparison_kernels], "tg8_shuffle8_loading_comparison")
 
 hybrid_shuffle_kernels = ["HybridShuffle32", "Threadgroup1d32", "Shuffle32"]
 plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in hybrid_shuffle_kernels], "hybrid_shuffle")
+
+dedicated_simd_tg_ballot_comparison_kernels = ["Shuffle32", "Ballot32", "Threadgroup1d32"]
+plot_varying_tg_using_gpu_queries([tr for tr in trs if tr.kernel in dedicated_simd_tg_ballot_comparison_kernels], "dedicated_simd_tg_ballot_comparison")
 
 plt.close("all")
