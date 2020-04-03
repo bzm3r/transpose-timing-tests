@@ -76,36 +76,31 @@ Now, let's look at the performance of the Intel devices with respect to changing
 
 ![](./plots/intel_loading_comparison.png)
 
-This plot also reveals that Intel devices have less available parallelism for threadgroup shared memory than for subgroup operations. This effect is expected, as the hardware shares a relatively limited number of shared memory subsystems per "slice" of execution units. ***[Link to wikichip Gen9]***
-
-The picture looks similar if we restrict our attention entirely to transposition of 16x8x8 matrices, except for the stand-out performance of the `Shuffle8` kernel on Intel:
+This plot also reveals that Intel devices have less available parallelism for threadgroup shared memory than for subgroup operations. This effect is expected, as the hardware shares a relatively limited number of shared memory subsystems per "slice" of execution units **([see Wikichip page on Gen9 microarchitecture](https://en.wikichip.org/wiki/intel/microarchitectures/gen9#Gen9)). A plot showing only 8x8 transposition results cleanly shows the parallelism difference between the two approaches on Intel devices.**
 
 ![](./plots/tg8_shuffle8_loading_comparison.png)
 
 ## A ballot based subgroup approach
 
-An additional problem with subgroups is that not all subgroup operations are supported on all hardware. In particular, our matrix transposition code relies heavily on shuffle operations, and these are not present at all either in DX12 or in HLSL (even when compiling from HLSL to SPIR-V, ***[link to dxc issue]***).
+An additional problem with subgroups is that not all subgroup operations are supported on all hardware. In particular, our matrix transposition code relies heavily on shuffle operations, and these are not present at all either in DX12 or in HLSL (even when compiling from HLSL to SPIR-V). See the [test on Tim Jones' shader-playground](http://shader-playground.timjones.io/63db661366c97e9d1e0b5e05fa5d89c2), and [relevant DXC issue](https://github.com/microsoft/DirectXShaderCompiler/issues/2692).
 
-Since HLSL does support the ballot intrinsic, we explored the performance of a kernel based on the ballot intrinsic compared to those using the shuffle intrinsic. The ballot approach is only relevant to 32x32 bitmap transpositions, due to how we have structured our data, so we are going to look at performance on discrete GPUs. 
-
-The performance of the `Ballot32` kernel is poor:
+Since HLSL does support the ballot intrinsic, we explored the performance of [a kernel](https://github.com/bzm3r/transpose-timing-tests/blob/master/kernels/templates/transpose-Ballot32-template.comp) based on the ballot intrinsic compared to those using the shuffle intrinsic. The ballot approach is only relevant to 32x32 bitmap transpositions, due to how we have structured our data, so we are going to look at performance on discrete GPUs.
 
 ![](./plots/dedicated_simd_tg_ballot_comparison.png)
 
-The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be ascribed to the O(n) nature of the ballot-based kernel (n being the number of bits in the matrix), while the shuffle-based kernel is O(log(n)). However, another issue is also due to the heavy branching (with poor divergence) required the `Ballot32` kernel.
+`Ballot32` kernel performance is poor. The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be ascribed to the O(n) nature of the ballot-based kernel (n being the number of bits in the matrix), while the shuffle-based kernel is O(lg(n)). However, another issue is also due to the heavy branching (with poor divergence) required in the `Ballot32` kernel.
 
 ## Conclusion
 
-***[This is the wrong conclusion, as it presupposes the priorities of the people writing the code. It's very common to have different kernels tuned to different hardware. The right way to frame this is as a tradeoff. You can consider the main point of this blog post as illuminating that tradeoff, helping people decide.]***
-In conclusion, we think that the subgroup approach does not provide enough of a performance boost to justify using it, given that:
+Making a decision between using the threadgroup approach and the subgroup approach is not straightforward, but this post is meant to provide some data to guide this choice. Some key observations are:
 
 1. performance gain is very device dependant, from being marginal on our AMD device, to significant on Nvidia devices, and dramatic on Intel devices;  
 2. it can be difficult to write subgroup kernels for Intel, since it is not easy to force a particular subgroup size, and for some reason, hybrid approaches seem to have poor performance;
 3. if you're writing kernels using HLSL (as we are, for piet-dx12), then you may be missing the subgroup intrinsics necessary for a performant implementation of your kernel. 
 
-So even though the subgroup approach can provide wins, there are many caveats, while the threadgroup approach is portable and reliable. Finally, we have two questions we do not know the answer to, but would like to know:
+Even though the subgroup approach can provide wins, there are caveats, while the threadgroup approach is easy to use, portable and reliable. So, if performance matters, and you are only supporting a narrow set of hardware, the subgroup approach may well be the easy choice. Otherwise,  Finally, we have two questions we do not know the answer to, but would like to know:
 
-* why does the hybrid approach have poorer performance on Intel devices?
+* why does the hybrid approach have poor performance vs. the pure threadgroup approach on Intel devices?
 * why does AMD's threadgroup shared memory seem to be as performant as subgroup register storage? 
 
 
