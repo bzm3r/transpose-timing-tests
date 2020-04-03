@@ -61,3 +61,12 @@ Note that this is not because the `Shuffle8` kernel is simply doing less work, s
 ![](./plots/shuffle_8vs32_comparison.png)
 
 It is very interesting to note that pure-shuffle 16x8x8 bit matrix transposition performance on Intel is around the same order of magnitude as 16x8x8 pure-shuffling on Nvidia or AMD devices!
+
+Now, let's look at the performance of the Intel devices with respect to changing payload size. As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs, as their performance begins saturate out earlier than the dedicated devices.  
+
+![](./plots/intel_loading_comparison.png)
+
+The picture looks similar if we restrict our attention entirely to transposition of 16x8x8 matrices, except for the stand-out performance of the `Shuffle8` kernel on Intel:
+
+![](./plots/tg8_shuffle8_loading_comparison.png)
+
