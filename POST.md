@@ -32,6 +32,17 @@ To compare performance, we calculate from our timing results the number of bitma
 
 What jumps out is that while the the subgroup kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. Furthermore, effective utilization of the Nvidia RTX 2060 (a high end Nvidia GPU) for the bit matrix transposition task with respect to the Nvidia GTX 1060 relies on using SIMD techniques. 
 
+We can also plot transposition rate versus varying number of bitmaps uploaded for transposition. Varying the payload size effectively varies how many threads are dispatched (theoretically, but not necessarily actually, since the device might not have that many threads available) for the compute task. So, it can tell us:
+* (at low dispatch size) the relative performance of a single threads on a particular device with respect to that of another device
+* (at increasing dispatch size) the maximum number of threads the device is able to muster, before being forced to divvy up tasks between this number.
+
+![](./plots/amd_vs_nvd_loading_comparison.png)
+
+An important observation is the number of threads dispatched when performance begins to start saturating. This gives us an indication of relatively how many threads a device can actually bring to bear on the problem at hand. So, while Nvidia GTX 1060's lanes individually outperform those of the AMD RX 570's, it cannot muster as many lanes as the AMD device can at one time. Thus, the AMD device can achieve higher transposition rates than the Nvidia device, when dealing with large payloads.   
+
+Comparing Nvidia devices alone, individual thread performance between the Nvidia GTX 1060 (mid-tier GPU) and the Nvidia RTX 2060 (high end GPU) is comparable. But, just like the AMD RX 570, at large payload sizes, the RTX 2060 begins to dominate as it can muster many more threadsthan the GTX 1060.  
+
+
 ## Intel devices, hybrid shuffles, and 8x8 bitmap transpositions
 
 On the Intel devices, we could not run `Shuffle32`, as we could not guarantee that the compiler would choose a subgroup size of 32 (it can choose a logical size between 8 and 32). However, since our transposition algorithm transposes a bitmap using a recursive algorithm, we could write a hybrid kernel which uses subgroup shuffles only for the lower order transpositions requiring a subgroup size of 8, and threadgroup-based transpositions otherwise:
