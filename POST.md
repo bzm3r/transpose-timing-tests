@@ -1,15 +1,12 @@
-Solving problems on a GPU requires breaking it up into "primitives". Some primitives can naturally be executed in parallel, but others require 
-coordination between the GPU's threads. An example of a primitive which requires coordination between threads for execution is the 
+Solving problems on a GPU requires breaking it up into "primitives". Some primitives can naturally be executed in parallel, but others require coordination between the GPU's threads. An example of a primitive which requires coordination between threads for execution is the 
 transposition of a square bitmap matrix. In piet-gpu, the bitmap represents a boolean matrix storing whether object `i` interacts with 
 tile `j`. This post will examine the performance of this transposition task in detail. 
 
-As we've hinted, the transposition of a square matrix bitmap requires coordination between threads. Depending on how the problem is
-approached, either: 
 
-1. (the threadgroup approach) the read/write access to a centrally stored (in threadgroup shared memory) bitmap must be coordinated between 
-threads, or 
-2. (the subgroup approach) if the bitmap is stored in a distributed manner amongst the registers of the threads, then data must be shuffled 
-around between these registers to perform transposition. 
+The type of inter-thread coordination required for the bitmap transposition task depends on how the problem is approached, either: 
+
+1. (the threadgroup approach) the read/write access to a centrally stored (in threadgroup shared memory) bitmap must be coordinated between  threads, or 
+2. (the subgroup approach) if the bitmap is stored in a distributed manner amongst the registers of the threads, then data must be shuffled  around between these registers to perform transposition. 
 
 The threadgroup approach provides a programmer with a flexible interface through which stored data in threadgroup shared memory can be 
 accessed and manipulated, and this interface is widely supported by hardware, graphics APIs, and shader languages. On the other hand, in the 
@@ -53,7 +50,7 @@ We are surprised to find that the hybrid kernel underperformed the threadgroup k
 
 ![](./plots/dedicated_hybrid_tg_comparison.png)
 
-We do not know why the hybrid shuffle kernel underperforms on Intel devices. If you do have insight, we'd love to know!
+We do not know why the hybrid shuffle kernel underperforms on Intel devices. If you have insight on this issue, we'd love to know!
 
 Another thing we could do on Intel is to transpose 16 8x8 bit matrices using subgroup shuffles alone; 16 8x8 bit matrices fit inside one 32x32 bit matrix, so we need not fiddle with our data representation or reported performance metric (transpose/sec) too much. Just consider am unqualified transpose in the 8x8 setting to be be the operation of transposing 16 8x8 bit matrices. The `Shuffle8` kernel has astonishingly good performance: 
 
