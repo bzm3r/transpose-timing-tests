@@ -80,5 +80,17 @@ The performance of the `Ballot32` kernel is awful:
 
 The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be ascribed to the O(n) nature of the ballot-based kernel (n being the number of bits in the matrix), while the shuffle-based kernel is O(log(n)). However, another issue is also due to the heavy branching required the `Ballot32` kernel.
 
+## Conclusion
+
+In conclusion, we think that the subgroup approach does not provide enough of a performance boost to justify using it, given that:
+
+1. performance gain is very device dependant, from being marginal on our AMD device, to significant on Nvidia devices, and dramatic on Intel devices;  
+2. it can be difficult to write subgroup kernels for Intel, since it is not easy to force a particular subgroup size, and for some reason, hybrid approaches seem to have poor performance;
+3. if you're writing kernels using HLSL (as we are, for piet-dx12), then you may be missing the subgroup intrinsics necessary for a performant implementation of your kernel. 
+
+So even though the subgroup approach can provide wins, there are many caveats, while the threadgroup approach is portable and reliable. Finally, we have two questions we do not know the answer to, but would like to know:
+
+* why does the hybrid approach have poorer performance on Intel devices?
+* why does AMD's threadgroup shared memory seem to be as performant as subgroup register storage? 
 
 
