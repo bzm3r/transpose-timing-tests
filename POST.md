@@ -30,7 +30,17 @@ To compare performance, we calculate from our timing results the number of bitma
 
 ![](./plots/dedicated_simd_tg_comparison.png)
 
-What jumps out is that while the the subgroup kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. Furthermore, effective utilization of the Nvidia RTX 2060 (a high end Nvidia GPU) for the bit matrix transposition task with respect to the Nvidia GTX 1060 relies on using SIMD techniques.
+What jumps out is that while the the subgroup kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. Furthermore, effective utilization of the Nvidia RTX 2060 (a high end Nvidia GPU) for the bit matrix transposition task with respect to the Nvidia GTX 1060 relies on using SIMD techniques. 
 
+## Intel devices, hybrid shuffles, and 8x8 bitmap transpositions
 
+On the Intel devices, we could not run `Shuffle32`, as we could not guarantee that the compiler would choose a subgroup size of 32 (it can choose a logical size between 8 and 32). However, since our transposition algorithm transposes a bitmap using a recursive algorithm, we could write a hybrid kernel which uses subgroup shuffles only for the lower order transpositions requiring a subgroup size of 8, and threadgroup-based transpositions otherwise:
+
+![](./plots/integrated_hybrid_tg_comparison.png)
+
+We are surprised to find that the hybrid kernel underperformed the threadgroup kernel on Intel devices. On the dedicated devices, the hybrid shuffle behaved as we expected, with performance middling between threadgroup and shuffle kernels:
+
+![](./plots/dedicated_hybrid_tg_comparison.png)
+
+We do not know why the hybrid shuffle kernel underperforms on Intel devices. If you do have insight, we'd love to know!
 
