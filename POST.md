@@ -1,6 +1,4 @@
-Solving a problem on a GPU often requires breaking it up into "primitives". Some primitives can naturally be executed in parallel, but others require coordination between the GPU's threads. An example of a primitive which requires coordination between threads for execution is the 
-transposition of a square bitmap matrix. In piet-gpu, the bitmap represents a boolean matrix storing whether object `i` interacts with 
-tile `j`. This post will examine the performance of this transposition task in detail. 
+Solving a problem on a GPU often requires breaking it up into "primitives". Some primitives can naturally be executed in parallel, but others require coordination between the GPU's threads. An example of a primitive which requires coordination between threads for execution is the transposition of a square bitmap matrix. In piet-gpu, the bitmap represents a boolean matrix storing whether object `i` interacts with tile `j`. This post will examine the performance of this transposition task in detail. 
 
 There are two main approaches to inter-thread coordination for the bitmap transposition task: 
 
@@ -8,15 +6,18 @@ There are two main approaches to inter-thread coordination for the bitmap transp
 2. (the subgroup approach) if the bitmap is stored in a distributed manner amongst the registers of the threads, then data must be shuffled around between these registers to perform transposition. 
 
 The threadgroup approach provides a programmer with a flexible interface through which stored data in threadgroup shared memory can be 
-accessed and manipulated, and this interface is widely supported by hardware, graphics APIs, and shader languages. The subgroup approach offers better performance, but also challenges with portability (it is not supported or only partially supported on older hardware and APIs).
+accessed and manipulated, and this interface is widely supported by hardware, graphics APIs, and shader languages. The subgroup approach offers better performance, but also challenges with portability (it is not supported or only partially supported on older hardware and APIs). ***Attempt to clarify previous incorrectly worded statement: for example, HLSL and DX12 do not make the shuffle intrinsic available.*** Even modern shader languages do not uniformly support subgroup intrinsics; for example HLSL with SM 6.0 does not provide the subgroup shuffle intrinsic. 
 
-***[Point to Vulkan subgroup tutorial. Some of the audience will know this, others won't. So this is an opportunity to cut'n'paste various GPU resource lists :) Also feel free to link my blog post for general background.]***
+~~***[Point to Vulkan subgroup tutorial. Some of the audience will know this, others won't. So this is an opportunity to cut'n'paste various GPU resource lists :) Also feel free to link my blog post for general background.]***~~
 
-??? For 
-example, HLSL and DX12 do not make the shuffle intrinsic available. 
+Here's some relevant resources for those who'd like to learn more:
+* [the Vulkan subgroup tutorial](https://www.khronos.org/blog/vulkan-subgroup-tutorial)
+* [Vulkan Subgroup Explained, by Daniel Koch](./ref-docs/06-subgroups.pdf) ([direct link](https://www.khronos.org/assets/uploads/developers/library/2018-vulkan-devday/06-subgroups.pdf)), also provides a table comparing subgroup interface in GLSL vs. HLSL
+* [AMD GCN Assembly: Cross-Lane Operations](https://gpuopen.com/amd-gcn-assembly-cross-lane-operations/)
+* [Using CUDA Warp-Level Primitives](https://devblogs.nvidia.com/using-cuda-warp-level-primitives/)
+* [GPU resources collection](https://raphlinus.github.io/gpu/2020/02/12/gpu-resources.html)
 
-The subgroup approach is appealing because of significantly better performance when transferring between data stored in subgroup's thread registers. 
-Threadgroup shared memory, in comparison, has poorer performance:
+The subgroup approach is appealing because of significantly better performance when transferring between data stored in subgroup's thread registers. Threadgroup shared memory, in comparison, has poorer performance:
 
 ![memory-hierarchy](./diagrams/memory-hierarchy.png)
 
@@ -24,9 +25,10 @@ Is the performance gain from the subgroup approach worth it, given its downsides
 
 ## Performance of threadgroup approach vs. subgroup approach
 
-***[A few sentences describing what this code does. Each threadgroup transposes some number, 1 in the least case, of 32x32 matrices. The code is at [point to repo].]***
+~~***[A few sentences describing what this code does. Each threadgroup transposes some number, 1 in the least case, of 32x32 matrices. The code is at [point to repo].]***~~
+We wrote kernels using threadgroup and subgroup approaches to solve the bitmap transposition problem. In the [threadgroup kernel](https://github.com/bzm3r/transpose-timing-tests/blob/master/kernels/templates/transpose-Threadgroup1d32-template.comp) (referred to as `Threadgroup1d32`), each threadgroup transposes some number, 1 in the least case, of 32x32 bitmaps (depending on the size of the threadgroup). In the [subgroup kernel](https://github.com/bzm3r/transpose-timing-tests/blob/master/kernels/templates/transpose-Shuffle32-template.comp) (referred to as `Shuffle32`), each subgroup transposes a 32x32 bitmap, with the number of subgroups in a threadgroup depending upon the subgroup size (hardware-specific) and the selected threadgroup size. 
 
-To compare performance, we calculate from our timing results the number of bitmap transpositions performed per second. Let's plot this rate with respect to varying threadgroup size. This chart shows two implementations, `Shuffle32` which is subgroup based, and `Threadgroup1d32` which is threadgroup based, on 3 different GPUs.
+To compare performance, we calculate from our timing results the number of bitmap transpositions performed per second. Let's plot this rate with respect to varying threadgroup size. This chart shows **results from** `Threadgroup1d32` and `Shuffle32` kernels, on 3 different GPUs.
 
 ![](./plots/dedicated_simd_tg_comparison.png)
 
