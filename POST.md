@@ -24,5 +24,13 @@ Threadgroup shared memory, in comparison, has poorer performance:
 
 Is the performance gain from the subgroup approach worth it, given its downsides? Let's find out!
 
+## Performance of threadgroup approach vs. subgroup approach
+
+To compare performance, we calculate from our timing results the number of bitmap transpositions performed per second. Let's plot this rate with respect to varying threadgroup size:
+
+![](./plots/dedicated_simd_tg_comparison.png)
+
+What jumps out is that while the the subgroup kernel (`Shuffle32`) outperforms the threadgroup-based kernel (`Threadgroup1d32`) on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. Furthermore, effective utilization of the Nvidia RTX 2060 (a high end Nvidia GPU) for the bit matrix transposition task with respect to the Nvidia GTX 1060 relies on using SIMD techniques.
+
 
 
