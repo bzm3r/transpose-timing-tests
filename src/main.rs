@@ -60,26 +60,6 @@ fn main() {
         TaskGroupDefn {
             num_cpu_execs,
             num_gpu_execs,
-            kernel_type: KernelType::Threadgroup2d32,
-        }
-    );
-    test_env.time_task_group();
-    test_env.save_results();
-
-    test_env.set_task_group(
-        TaskGroupDefn {
-            num_cpu_execs,
-            num_gpu_execs,
-            kernel_type: KernelType::Threadgroup2d8,
-        }
-    );
-    test_env.time_task_group();
-    test_env.save_results();
-
-    test_env.set_task_group(
-        TaskGroupDefn {
-            num_cpu_execs,
-            num_gpu_execs,
             kernel_type: KernelType::Shuffle8,
         }
     );
@@ -115,4 +95,35 @@ fn main() {
     );
     test_env.time_task_group();
     test_env.save_results();
+
+    test_env.set_task_group(
+        TaskGroupDefn {
+            num_cpu_execs,
+            num_gpu_execs,
+            kernel_type: KernelType::HybridShuffleAdaptive32,
+        }
+    );
+    test_env.time_task_group();
+    test_env.save_results();
+
+    // no need to run the 2D versions anymore
+    // test_env.set_task_group(
+    //     TaskGroupDefn {
+    //         num_cpu_execs,
+    //         num_gpu_execs,
+    //         kernel_type: KernelType::Threadgroup2d32,
+    //     }
+    // );
+    // test_env.time_task_group();
+    // test_env.save_results();
+    //
+    // test_env.set_task_group(
+    //     TaskGroupDefn {
+    //         num_cpu_execs,
+    //         num_gpu_execs,
+    //         kernel_type: KernelType::Threadgroup2d8,
+    //     }
+    // );
+    // test_env.time_task_group();
+    // test_env.save_results();
 }

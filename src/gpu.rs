@@ -624,7 +624,7 @@ impl<B: hal::Backend> GpuTestEnv<B> {
                     })
                 }
             }
-            KernelType::Threadgroup1d32 | KernelType::Threadgroup1d8 | KernelType::HybridShuffle32 => {
+            KernelType::Threadgroup1d32 | KernelType::Threadgroup1d8 | KernelType::HybridShuffle32 | KernelType::HybridShuffleAdaptive32 => {
                 let task_group_prefix = format!("{}-{}", self.backend, task_group_defn.kernel_type);
                 Some(TaskGroup {
                     name: format!("{}-{}", &task_group_prefix, self.device_name),

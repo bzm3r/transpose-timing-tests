@@ -1,0 +1,88 @@
+#version 450
+#extension GL_KHR_shader_subgroup_shuffle: enable
+#define WORKGROUP_SIZE ~WG_SIZE~
+
+layout(local_size_x = WORKGROUP_SIZE, local_size_y = 1) in;
+
+layout(set = 0, binding = 0) buffer BM {
+    uint[32] bms[];
+};
+struct Uniforms
+{
+    uint num_bms;
+    uint num_executions;
+};
+layout(set=0, binding = 1) uniform UniformInput
+{
+    Uniforms u_consts;
+};
+
+uint shuffle_round_tg(uint dst_tix, uint a, uint b, uint m, uint s) {
+    uint c;
+    if ((dst_tix & s) == 0) {
+        c = b << s;
+    } else {
+        m = ~m;
+        c = b >> s;
+    }
+    return (a & m) | (c & ~m);
+}
+
+uint shuffle_round(uint dst_tix, uint a, uint m, uint s) {
+    uint b = subgroupShuffleXor(a, s);
+    uint c;
+    // this predicate is unlike the pure-SIMD shuffle function, which uses gl_SubgroupInvocationID
+    if ((dst_tix & s) == 0) {
+        c = b << s;
+    } else {
+        m = ~m;
+        c = b >> s;
+    }
+    return (a & m) | (c & ~m);
+}
+
+// Assuming 32x32 bit matrices, we expect at most gl_WorkGroupSize.x >> 5 to be processed by the workgroup.
+const uint num_mats_per_wg = gl_WorkGroupSize.x >> 5;
+shared uint[32] tg_bms[num_mats_per_wg];
+const uint shifts[5] = uint[5](16, 8, 4, 2, 1);
+const uint masks[5] = uint[5](0xffff, 0xff00ff, 0xf0f0f0f, 0x33333333, 0x55555555);
+
+void main() {
+    uint subgroup_size = gl_WorkGroupSize.x/gl_NumSubgroups;
+    uint local_bm_ix = gl_LocalInvocationID.x >> 5;
+    uint global_bm_ix = num_mats_per_wg*gl_WorkGroupID.x + local_bm_ix;
+
+    if (global_bm_ix < u_consts.num_bms && local_bm_ix < u_consts.num_bms) {
+        uint dst_tix = gl_LocalInvocationID.x;
+        uint dst_rix = dst_tix & 31;
+
+        uint s;
+        uint m;
+        uint src_tix;
+        uint src_rix;
+        uint src_dat;
+        uint dst_dat = bms[global_bm_ix][dst_rix];
+
+        for (uint iter = 0; iter < u_consts.num_executions; iter++) {
+            for (int i = 0; i < 5; i++) {
+                s = shifts[i];
+                m = masks[i];
+                if (s*2 > subgroup_size) {
+                    tg_bms[local_bm_ix][dst_rix] = dst_dat;
+                    barrier();
+
+                    src_tix = dst_tix^s;
+                    src_rix = src_tix & 31;
+                    src_dat = tg_bms[local_bm_ix][src_rix];
+                    barrier();
+
+                    dst_dat = shuffle_round_tg(dst_tix, dst_dat, src_dat, m, s);
+                } else {
+                    dst_dat = shuffle_round(dst_tix, dst_dat, m, s);
+                }
+            }
+        }
+
+        bms[global_bm_ix][dst_rix] = dst_dat;
+    }
+}

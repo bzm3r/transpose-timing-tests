@@ -17,6 +17,7 @@ pub enum KernelType {
     Shuffle32,
     Shuffle8,
     HybridShuffle32,
+    HybridShuffleAdaptive32,
 }
 
 impl fmt::Display for KernelType {
@@ -30,6 +31,7 @@ impl fmt::Display for KernelType {
             KernelType::Shuffle32 => write!(f, "{}", "Shuffle32"),
             KernelType::Shuffle8 => write!(f, "{}", "Shuffle8"),
             KernelType::HybridShuffle32 => write!(f, "{}", "HybridShuffle32"),
+            KernelType::HybridShuffleAdaptive32 => write!(f, "{}", "HybridShuffleAdaptive32"),
         }
     }
 }
