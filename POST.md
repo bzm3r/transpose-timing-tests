@@ -42,7 +42,7 @@ Comparing Nvidia devices alone, individual thread performance between the Nvidia
 
 ## Intel devices, hybrid shuffles, and 8x8 bitmap transpositions
 
-On the Intel devices, we could not run `Shuffle32`, as we could not guarantee that the compiler would choose a subgroup size of 32 (it can choose a logical size between 8 and 32). However, since our transposition algorithm transposes a bitmap using a recursive algorithm, we could write a hybrid kernel which uses subgroup shuffles only for the lower order transpositions requiring a subgroup size of 8, and threadgroup-based transpositions otherwise:
+On the Intel devices, we could not run `Shuffle32`, as we could not guarantee that the compiler would choose a subgroup size of 32 (it can choose a logical size between 8 and 32). Moreover, we cannot query the subgroup size chosen by the compiler using the `GL_SUBGROUP_SIZE` constant, since it is always initialized with 32, the maximum logical size. However, since our transposition algorithm transposes a bitmap using a recursive algorithm, we could write a hybrid kernel which uses subgroup shuffles only for the lower order transpositions requiring a subgroup size of 8, and threadgroup-based transpositions otherwise:
 
 ![](./plots/integrated_hybrid_tg_comparison.png)
 
@@ -69,4 +69,16 @@ Now, let's look at the performance of the Intel devices with respect to changing
 The picture looks similar if we restrict our attention entirely to transposition of 16x8x8 matrices, except for the stand-out performance of the `Shuffle8` kernel on Intel:
 
 ![](./plots/tg8_shuffle8_loading_comparison.png)
+
+## A ballot based subgroup approach
+
+DX12 does not support shuffle intrinsics, and this is reflected in HLSL, which does not provide a way to use them. Since the ballot intrinsic is available, this motivated us to compare the performance of a kernel based on the ballot intrinsic with respect to those using the shuffle intrinsic. The ballot approach is only relevant to 32x32 bitmap transpositions, due to how we have structured our data, so we are going to look at performance on discrete GPUs. 
+
+The performance of the `Ballot32` kernel is awful:
+
+![](./plots/dedicated_simd_tg_ballot_comparison.png)
+
+The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be ascribed to the O(n) nature of the ballot-based kernel (n being the number of bits in the matrix), while the shuffle-based kernel is O(log(n)). However, another issue is also due to the heavy branching required the `Ballot32` kernel.
+
+
 
