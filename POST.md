@@ -6,7 +6,7 @@ There are two main approaches to inter-thread coordination for the bitmap transp
 2. (the subgroup approach) if the bitmap is stored in a distributed manner amongst the registers of the threads, then data must be shuffled around between these registers to perform transposition. 
 
 The threadgroup approach provides a programmer with a flexible interface through which stored data in threadgroup shared memory can be 
-accessed and manipulated, and this interface is widely supported by hardware, graphics APIs, and shader languages. The subgroup approach offers better performance, but also challenges with portability (it is not supported or only partially supported on older hardware and APIs). ***Attempt to clarify previous incorrectly worded statement: for example, HLSL and DX12 do not make the shuffle intrinsic available.*** Even modern shader languages do not uniformly support subgroup intrinsics; for example HLSL with SM 6.0 does not provide the subgroup shuffle intrinsic. 
+accessed and manipulated, and this interface is widely supported by hardware, graphics APIs, and shader languages. The subgroup approach offers better performance, but also challenges with portability (it is not supported or only partially supported on older hardware and APIs). ***[BM: Following is an attempt to clarify previous incorrectly worded statement]*** Even modern shader languages do not uniformly support subgroup intrinsics; for example HLSL with SM 6.0 does not provide the subgroup shuffle intrinsic. 
 
 ~~***[Point to Vulkan subgroup tutorial. Some of the audience will know this, others won't. So this is an opportunity to cut'n'paste various GPU resource lists :) Also feel free to link my blog post for general background.]***~~
 
@@ -32,7 +32,7 @@ To compare performance, we calculate from our timing results the number of bitma
 
 ![](./plots/dedicated_simd_tg_comparison.png)
 
-What jumps out is that while the the subgroup kernel outperforms the threadgroup-based kernel on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. Furthermore, effective utilization of the Nvidia RTX 2060 (a high end Nvidia GPU) for the bit matrix transposition task with respect to the Nvidia GTX 1060 relies on using SIMD techniques. ***[I didn't quite get what this last sentence is supposed to mean; maybe delete?]***
+What jumps out is that while the the subgroup kernel outperforms the threadgroup-based kernel on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. Note also that the Nvidia RTX 2060 (a high end Nvidia GPU) begins outperform the Nvidia GTX 1060 only when using the subgroup approach. ~~***[I didn't quite get what this last sentence is supposed to mean; maybe delete?]***~~ **[BM: tried to clarify this; does it work?]**
 
 We can also plot transposition rate versus varying number of bitmaps uploaded for transposition. Varying the payload size varies the maximum of how many threads are dispatched for the compute task. So, it can tell us:
 * (at low dispatch size) the relative performance of a single threads on a particular device with respect to that of another device
@@ -40,7 +40,7 @@ We can also plot transposition rate versus varying number of bitmaps uploaded fo
 
 ![](./plots/amd_vs_nvd_loading_comparison.png)
 
-An important observation is the number of threads dispatched when performance begins to start saturating. This gives us an indication of relatively how many threads a device can actually bring to bear on the problem at hand. So, while Nvidia GTX 1060's lanes individually outperform those of the AMD RX 570's, it cannot muster as many lanes as the AMD device can at one time. Thus, the AMD device can achieve higher transposition rates than the Nvidia device, when dealing with large payloads.   
+An important observation is the number of threads dispatched when performance begins to start saturating. This gives us an indication of relatively how many threads a device can actually bring to bear on the problem at hand. So, while Nvidia GTX 1060's lanes individually outperform those of the AMD RX 570's, it cannot muster as many lanes as the AMD device can at the same time. Thus, the AMD device can achieve higher transposition rates than the Nvidia device, when dealing with large payloads.   
 
 Comparing Nvidia devices alone, individual thread performance between the Nvidia GTX 1060 (mid-tier GPU) and the Nvidia RTX 2060 (high end GPU) is comparable. But, just like the AMD RX 570, at large payload sizes, the RTX 2060 begins to dominate as it can muster many more threads than the GTX 1060.  
 
@@ -50,9 +50,9 @@ A major difference between threadgroup and subgroup approaches is that the progr
 
 In fact, the situation on Intel is even worse, as there is no good way to even query the subgroup size for a given compute pipeline. The `subgroupSize` from the `VkPhysicalDeviceSubgroupProperties` query reports only a default value (32 on the hardware and drivers tested). Even worse, the `gl_SubgroupSize` variable, available within shader code, reports the same default value instead of the actual number of invocations within the subgroup. This behavior seems to technically comply with the spec language, but is not useful, to say the least.
 
-With luck, the situation on Intel will get better, as the `VK_EXT_subgroup_size_control` [link] rolls out, but for the time being code has to deal with the situation.
+**Hopefully the situation on Intel will get better, once the [`VK_EXT_subgroup_size_control`](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_subgroup_size_control.html) extension becomes widely supported by Intel drivers, but for the time being code has to deal with the situation. [vulkan.gpuinfo.org](https://vulkan.gpuinfo.org/) is a good source for checking out which Vulkan extensions some particular device driver supports.**
 
-Our implementation of matrix transpose performs `lg(n)` shuffle operations in sequence, each doing a partial transpose in parallel of a chunk of bits. Since threadgroup memory accesses are expensive, we explored a hybrid approach where some of the shuffles are done using subgroups, while the ones that interact in chunks larger than the subgroup size use threadgroup shared memory.
+Our implementation of matrix transpose performs `lg(n)` **(n being the number of bits in the bitmap)** shuffle operations in sequence, each doing a partial transpose in parallel of a chunk of bits. Since threadgroup memory accesses are expensive, we explored a hybrid approach where some of the shuffles are done using subgroups, while the ones that interact in chunks larger than the subgroup size use threadgroup shared memory.
 
 ![](./plots/integrated_hybrid_tg_comparison.png)
 
@@ -66,11 +66,11 @@ Another thing we could do on Intel is to transpose 16 8x8 bit matrices using sub
 
 ![](./plots/intel_8vs32_comparison.png)
 
-Note that this is not because the `Shuffle8` kernel is simply doing less work, since the `Threadgroup1d8` kernel is not significantly more performant than the `Threadgroup1d32` kernels on Intel devices. Furthermore, `Shuffle8` kernels are also not significantly more performant than `Shuffle32` kernels on AMD and Nvidia devices:
+Note that this is not because the `Shuffle8` kernel is simply doing less work, since the `Threadgroup1d8` kernel **(which does the same work as `Shuffle8`, except using threadgroups)** is not significantly more performant than the `Threadgroup1d32` kernels on Intel devices. Furthermore, `Shuffle8` kernels are also not significantly more performant than `Shuffle32` kernels on AMD and Nvidia devices:
 
 ![](./plots/shuffle_8vs32_comparison.png)
 
-It is very interesting to note that pure-shuffle 16x8x8 bit matrix transposition performance on Intel is around the same order of magnitude as 16x8x8 pure-shuffling on Nvidia or AMD devices!
+It is very interesting to note that pure-shuffle 16x8x8 bit matrix transposition performance on Intel **is at the same order of magnitude** as 16x8x8 pure-shuffling on Nvidia or AMD devices!
 
 Now, let's look at the performance of the Intel devices with respect to changing payload size. As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs, as their performance begins saturate out earlier than the dedicated devices.  
 
