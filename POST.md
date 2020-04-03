@@ -44,3 +44,12 @@ We are surprised to find that the hybrid kernel underperformed the threadgroup k
 
 We do not know why the hybrid shuffle kernel underperforms on Intel devices. If you do have insight, we'd love to know!
 
+Another thing we could do on Intel is to transpose 16 8x8 bit matrices using subgroup shuffles alone; 16 8x8 bit matrices fit inside one 32x32 bit matrix, so we need not fiddle with our data representation or reported performance metric (transpose/sec) too much. Just consider am unqualified transpose in the 8x8 setting to be be the operation of transposing 16 8x8 bit matrices. The `Shuffle8` kernel has astonishingly good performance: 
+
+![](./plots/intel_8vs32_comparison.png)
+
+Note that this is not because the `Shuffle8` kernel is simply doing less work, since the `Threadgroup1d8` kernel is not remarkably more performant than the `Threadgroup1d32` kernels on Intel devices. Furthermore, `Shuffle8` kernels are also not remarkably more performant than `Shuffle32` kernels on AMD and Nvidia devices:
+
+![](./plots/shuffle_8vs32_comparison.png)
+
+It is very interesting to note that pure-shuffle 16x8x8 bit matrix transposition performance on Intel is around the same order of magnitude as 16x8x8 pure-shuffling on Nvidia or AMD devices!
