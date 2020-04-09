@@ -85,7 +85,7 @@ Since HLSL does support the ballot intrinsic, we explored the performance of [a 
 
 ![](./plots/dedicated_simd_tg_ballot_comparison.png)
 
-`Ballot32` kernel performance is poor. The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be ascribed to the O(n) nature of the ballot-based kernel (n being the number of bits in the matrix), while the shuffle-based kernel is O(lg(n)). However, another issue is also due to the heavy branching (with poor divergence) required in the `Ballot32` kernel.
+`Ballot32` kernel performance is poor. The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be ascribed to the fact that  the ballot-based kernel requires on the order of n (n being the number of bits in the matrix) instructions to execute a transpose, while the shuffle-based kernel requires only on the order of lg(n) instructions. However, another issue is also due to the heavy branching (with poor divergence) required in the `Ballot32` kernel.
 
 ## Conclusion
 
