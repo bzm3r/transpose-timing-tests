@@ -6,9 +6,7 @@ There are two main approaches to inter-thread coordination for the bitmap transp
 2. (the subgroup approach) if the bitmap is stored in a distributed manner amongst the registers of the threads, then data must be shuffled around between these registers to perform transposition. 
 
 The threadgroup approach provides a programmer with a flexible interface through which stored data in threadgroup shared memory can be 
-accessed and manipulated, and this interface is widely supported by hardware, graphics APIs, and shader languages. The subgroup approach offers better performance, but also challenges with portability (it is not supported or only partially supported on older hardware and APIs). ***[BM: Following is an attempt to clarify previous incorrectly worded statement]*** Even modern shader languages do not uniformly support subgroup intrinsics; for example HLSL with SM 6.0 does not provide the subgroup shuffle intrinsic. 
-
-~~***[Point to Vulkan subgroup tutorial. Some of the audience will know this, others won't. So this is an opportunity to cut'n'paste various GPU resource lists :) Also feel free to link my blog post for general background.]***~~
+accessed and manipulated, and this interface is widely supported by hardware, graphics APIs, and shader languages. The subgroup approach offers better performance, but also challenges with portability (it is not supported or only partially supported on older hardware and APIs). Even modern shader languages do not uniformly support subgroup intrinsics; for example HLSL with SM 6.0 does not provide the subgroup shuffle intrinsic. 
 
 Here's some relevant resources for those who'd like to learn more:
 * [the Vulkan subgroup tutorial](https://www.khronos.org/blog/vulkan-subgroup-tutorial)
@@ -25,14 +23,13 @@ Is the performance gain from the subgroup approach worth it, given its downsides
 
 ## Performance of threadgroup approach vs. subgroup approach
 
-~~***[A few sentences describing what this code does. Each threadgroup transposes some number, 1 in the least case, of 32x32 matrices. The code is at [point to repo].]***~~
 We wrote kernels using threadgroup and subgroup approaches to solve the bitmap transposition problem. In the [threadgroup kernel](https://github.com/bzm3r/transpose-timing-tests/blob/master/kernels/templates/transpose-Threadgroup1d32-template.comp) (referred to as `Threadgroup1d32`), each threadgroup transposes some number, 1 in the least case, of 32x32 bitmaps (depending on the size of the threadgroup). In the [subgroup kernel](https://github.com/bzm3r/transpose-timing-tests/blob/master/kernels/templates/transpose-Shuffle32-template.comp) (referred to as `Shuffle32`), each subgroup transposes a 32x32 bitmap, with the number of subgroups in a threadgroup depending upon the subgroup size (hardware-specific) and the selected threadgroup size. 
 
-To compare performance, we calculate from our timing results the number of bitmap transpositions performed per second. Let's plot this rate with respect to varying threadgroup size. This chart shows **results from** `Threadgroup1d32` and `Shuffle32` kernels, on 3 different GPUs.
+To compare performance, we calculate from our timing results the number of bitmap transpositions performed per second. Let's plot this rate with respect to varying threadgroup size. This chart shows results from `Threadgroup1d32` and `Shuffle32` kernels, on 3 different GPUs.
 
 ![](./plots/dedicated_simd_tg_comparison.png)
 
-What jumps out is that while the the subgroup kernel outperforms the threadgroup-based kernel on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. ~~***[I didn't quite get what this last sentence is supposed to mean; maybe delete?]***~~ **[BM: incorrect statement on my part which I have removed.]**
+What jumps out is that while the the subgroup kernel outperforms the threadgroup-based kernel on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices.
 
 We can also plot transposition rate versus varying number of bitmaps uploaded for transposition. Varying the payload size varies the maximum of how many threads are dispatched for the compute task. So, it can tell us:
 * (at low dispatch size) the relative performance of a single threads on a particular device with respect to that of another device
@@ -50,9 +47,9 @@ A major difference between threadgroup and subgroup approaches is that the progr
 
 In fact, the situation on Intel is even worse, as there is no good way to even query the subgroup size for a given compute pipeline. The `subgroupSize` from the `VkPhysicalDeviceSubgroupProperties` query reports only a default value (32 on the hardware and drivers tested). Even worse, the `gl_SubgroupSize` variable, available within shader code, reports the same default value instead of the actual number of invocations within the subgroup. This behavior seems to technically comply with the spec language, but is not useful, to say the least.
 
-**Hopefully the situation on Intel will get better, once the [`VK_EXT_subgroup_size_control`](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_subgroup_size_control.html) extension becomes widely supported by Intel drivers, but for the time being code has to deal with the situation. [vulkan.gpuinfo.org](https://vulkan.gpuinfo.org/) is a good source for checking out which Vulkan extensions a particular device driver supports, and how well supported, in general, an extension is. To check out the latter click on `Extensions` in the top bar, and type in the name of the extension you are interested in (e.g. `VK_EXT_subgroup_size_control`). Note that `VK_EXT_subgroup_size_control` isn't commonly supported, and the situation is particularly woolly on mobile.**
+Hopefully the situation on Intel will get better, once the [`VK_EXT_subgroup_size_control`](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_subgroup_size_control.html) extension becomes widely supported by Intel drivers, but for the time being code has to deal with the situation. [vulkan.gpuinfo.org](https://vulkan.gpuinfo.org/) is a good source for checking out which Vulkan extensions a particular device driver supports, and how well supported, in general, an extension is. To check out the latter click on `Extensions` in the top bar, and type in the name of the extension you are interested in (e.g. `VK_EXT_subgroup_size_control`). Note that `VK_EXT_subgroup_size_control` isn't commonly supported, and the situation is particularly woolly on mobile.
 
-Our implementation of matrix transpose performs `lg(n)` **(n being the number of bits in the bitmap)** shuffle operations in sequence, each doing a partial transpose in parallel of a chunk of bits. Since threadgroup memory accesses are expensive, we explored a hybrid approach where some of the shuffles are done using subgroups, while the ones that interact in chunks larger than the subgroup size use threadgroup shared memory.
+Our implementation of matrix transpose performs `lg(n)` (n being the number of bits in the bitmap) shuffle operations in sequence, each doing a partial transpose in parallel of a chunk of bits. Since threadgroup memory accesses are expensive, we explored a hybrid approach where some of the shuffles are done using subgroups, while the ones that interact in chunks larger than the subgroup size use threadgroup shared memory.
 
 ![](./plots/integrated_hybrid_tg_comparison.png)
 
@@ -66,17 +63,17 @@ Another thing we could do on Intel is to transpose 16 8x8 bit matrices using sub
 
 ![](./plots/intel_8vs32_comparison.png)
 
-Note that this is not because the `Shuffle8` kernel is simply doing less work, since the `Threadgroup1d8` kernel **(which does the same work as `Shuffle8`, except using threadgroups)** is not significantly more performant than the `Threadgroup1d32` kernels on Intel devices. Furthermore, `Shuffle8` kernels are also not significantly more performant than `Shuffle32` kernels on AMD and Nvidia devices:
+Note that this is not because the `Shuffle8` kernel is simply doing less work, since the `Threadgroup1d8` kernel (which does the same work as `Shuffle8`, except using threadgroups) is not significantly more performant than the `Threadgroup1d32` kernels on Intel devices. Furthermore, `Shuffle8` kernels are also not significantly more performant than `Shuffle32` kernels on AMD and Nvidia devices:
 
 ![](./plots/shuffle_8vs32_comparison.png)
 
-It is very interesting to note that pure-shuffle 16x8x8 bit matrix transposition performance on Intel **is at the same order of magnitude** as 16x8x8 pure-shuffling on Nvidia or AMD devices!
+It is very interesting to note that pure-shuffle 16x8x8 bit matrix transposition performance on Intel is at the same order of magnitude as 16x8x8 pure-shuffling on Nvidia or AMD devices!
 
 Now, let's look at the performance of the Intel devices with respect to changing payload size. As we might expect, Intel devices are able to muster fewer lanes than the dedicated GPUs, as their performance begins saturate out earlier than the dedicated devices.  
 
 ![](./plots/intel_loading_comparison.png)
 
-This plot also reveals that Intel devices have less available parallelism for threadgroup shared memory than for subgroup operations. This effect is expected, as the hardware shares a relatively limited number of shared memory subsystems per "slice" of execution units **([see Wikichip page on Gen9 microarchitecture](https://en.wikichip.org/wiki/intel/microarchitectures/gen9#Gen9)). A plot showing only 8x8 transposition results cleanly shows the parallelism difference between the two approaches on Intel devices.**
+This plot also reveals that Intel devices have less available parallelism for threadgroup shared memory than for subgroup operations. This effect is expected, as the hardware shares a relatively limited number of shared memory subsystems per "slice" of execution units ([see Wikichip page on Gen9 microarchitecture](https://en.wikichip.org/wiki/intel/microarchitectures/gen9#Gen9)). A plot showing only 8x8 transposition results cleanly shows the parallelism difference between the two approaches on Intel devices.
 
 ![](./plots/tg8_shuffle8_loading_comparison.png)
 
