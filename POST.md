@@ -32,7 +32,7 @@ To compare performance, we calculate from our timing results the number of bitma
 
 ![](./plots/dedicated_simd_tg_comparison.png)
 
-What jumps out is that while the the subgroup kernel outperforms the threadgroup-based kernel on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. Note also that the Nvidia RTX 2060 (a high end Nvidia GPU) begins outperform the Nvidia GTX 1060 only when using the subgroup approach. ~~***[I didn't quite get what this last sentence is supposed to mean; maybe delete?]***~~ **[BM: tried to clarify this; does it work?]**
+What jumps out is that while the the subgroup kernel outperforms the threadgroup-based kernel on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices. ~~***[I didn't quite get what this last sentence is supposed to mean; maybe delete?]***~~ **[BM: incorrect statement on my part which I have removed.]**
 
 We can also plot transposition rate versus varying number of bitmaps uploaded for transposition. Varying the payload size varies the maximum of how many threads are dispatched for the compute task. So, it can tell us:
 * (at low dispatch size) the relative performance of a single threads on a particular device with respect to that of another device
