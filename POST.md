@@ -100,16 +100,17 @@ Since HLSL does support the subgroup ballot intrinsic, we explored the performan
 
 `Ballot32` kernel performance is poor. The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be explained by the fact that  the ballot-based kernel requires on the order of n (n being the number of bits in the matrix) instructions to execute a transpose, while the shuffle-based kernel requires only on the order of lg(n) instructions. Another issue is divergence: the ballot kernel makes heavy use of branching. Since GPUs are fundamentally SIMD machines, threads which diverge from others (i.e. want to execute different instructions) due to branching are temporarily inactivated, until the other threads complete execution of their instruction. Thus, divergence should be avoided as much as possible, as it disrupts parallelism. 
 
-## Conclusion
+## TL;DR
 
-Making a decision between using the threadgroup approach and the subgroup approach is not straightforward, but this post is meant to provide some data to guide this choice. In particular the subgroup approach is competing against the fact that the threadgroup approach is easy to use, and reliably portable. 
+GPUs are, at their core, [SIMD](https://en.wikipedia.org/wiki/SIMD) devices. Traditionally, graphics APIs and shader languages do not make this apparent to the programmer, and instead encourage what we call the "threadgroup approach" but in the past few years, modern graphics APIs and shader languages have been exposing this underlying truth via subgroup (Vulkan)/wavefront (DX12) operations.
+ 
+Making a decision between using the threadgroup approach and the subgroup approach is not straightforward. While the subgroup approach promises faster computation times, the threadgroup approach is easy to use, and reliably portable. This post is meant to help guide a decision between using subgroups vs. threadgroups.
 
 Our key findings are:
 
-1. subgroup approach’s performance gains are very device dependent: marginal on our AMD device, significant on Nvidia devices, and dramatic on Intel devices;  
-2. it can be difficult to write subgroup kernels for Intel, since it is not yet easy to force a particular subgroup size, and hybrid subgroup+threadgroup approaches have surprisingly poor performance;
+1. subgroup approach’s performance gains are device dependent: marginal on our AMD device, significant on our Nvidia devices, and dramatic on our Intel devices;  
+2. it can be difficult to write subgroup kernels for Intel, since it is not yet easy to force a particular subgroup size, and a hybrid subgroup+threadgroup approach has surprisingly poor performance;
 3. if you're writing kernels using HLSL, then you may be missing the subgroup intrinsics necessary for a performant implementation of your kernel. 
 
-So, if performance matters, you’re okay with supporting a narrow set of hardware, and are willing to use GLSL + Vulkan, then the subgroup approach is the winner.   
+So, if performance matters, you’re okay with supporting a narrow set of hardware, and are willing to use GLSL + Vulkan, then the subgroup approach is the winner. Finally, some of our observations are mysterious to us. These are marked with `Mystery:` (CTRL+F for it). If you think you can shed light on these mysteries, we'd love to hear!
 
-Finally, some of our observations are mysterious to us. These are marked with `Mystery:` (CTRL+F for it). If you think you can shed light on these mysteries, we'd love to hear!
