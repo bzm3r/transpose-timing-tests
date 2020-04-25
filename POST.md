@@ -114,6 +114,6 @@ Our key findings are:
 2. it can be difficult to write subgroup kernels for Intel, since it is not yet easy to force a particular subgroup size, and a hybrid subgroup+threadgroup approach has surprisingly poor performance;
 3. if you're writing kernels using HLSL, then you may be missing the subgroup intrinsics necessary for a performant implementation of your kernel. 
 
-So, if performance matters, you’re okay with supporting a narrow set of hardware, and are willing to use GLSL + Vulkan, then the subgroup approach is the winner. 
+So, if performance matters, you’re okay with supporting a narrow set of hardware, and are willing to use GLSL + Vulkan (or CUDA?), then the subgroup approach is the winner. 
 
 Finally, some of our observations are mysterious to us. These are marked with `Mystery:` (CTRL+F for it). If you think you can shed light on these mysteries, we'd love to hear!
