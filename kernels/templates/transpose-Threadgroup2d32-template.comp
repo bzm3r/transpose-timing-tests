@@ -16,7 +16,7 @@ layout(set=0, binding = 1) uniform UniformInput
     Uniforms u_consts;
 };
 
-uint shuffle_round(uint dst_tid, uint a, uint b, uint m, uint s) {
+uint block_swap(uint dst_tid, uint a, uint b, uint m, uint s) {
     uint c;
     if ((dst_tid & s) == 0) {
         c = b << s;
@@ -60,7 +60,7 @@ void main() {
                 src_dat = tg_bms[local_bm_ix][src_tix];
                 barrier();
 
-                dst_dat = shuffle_round(dst_tix, dst_dat, src_dat, masks[i], s);
+                dst_dat = block_swap(dst_tix, dst_dat, src_dat, masks[i], s);
             }
         }
 

@@ -21,7 +21,7 @@ layout(set=0, binding = 1) uniform UniformInput
 };
 
 
-uint shuffle_round(uint a, uint m, uint s) {
+uint block_swap(uint a, uint m, uint s) {
     uint b = subgroupShuffleXor(a, s);
     uint c;
     if ((gl_SubgroupInvocationID & s) == 0) {
@@ -58,16 +58,16 @@ void main() {
 
         for (uint iter = 0; iter < u_consts.num_executions; iter++) {
             row = global_row;
-            row = shuffle_round(row, 0xffff, 16);
-            row = shuffle_round(row, 0xff00ff, 8);
-            row = shuffle_round(row, 0xf0f0f0f, 4);
-            row = shuffle_round(row, 0x33333333, 2);
-            row = shuffle_round(row, 0x55555555, 1);
+            row = block_swap(row, 0xffff, 16);
+            row = block_swap(row, 0xff00ff, 8);
+            row = block_swap(row, 0xf0f0f0f, 4);
+            row = block_swap(row, 0x33333333, 2);
+            row = block_swap(row, 0x55555555, 1);
 //            for (uint i = 0; i < 5; i++) {
 //                m = masks[i];
 //                s = shifts[i];
 //
-//                row = shuffle_round(row, m, s);
+//                row = block_swap(row, m, s);
 //            }
         }
         bms[global_bm_ix][row_id] = row;
