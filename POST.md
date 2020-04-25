@@ -2,8 +2,8 @@ Executing a task on a GPU often requires breaking it up into "primitives". Some 
 
 To transpose the bitmap matrix:
 
-1. (the threadgroup approach) threads must coordinate read/write access to the bitmap, stored in a central location (threadgroup shared memory)
-2. (the subgroup approach) threads must shuffle data amongst themselves in a coordinated manner, because the bitmap is sotred in a distributed manner amongst the registers of the threads.
+1. (the threadgroup approach) threads must coordinate read/write access to the bitmap, which is stored in a central location (threadgroup shared memory).
+2. (the subgroup approach) threads must coordinate data swaps amongst themselves, as the bitmap is stored in a distributed manner amongst their registers.
 
 The threadgroup approach provides a programmer with a flexible interface through which stored data in threadgroup shared memory can be accessed and manipulated. This interface is widely supported by hardware, graphics APIs, and shader languages. 
 
@@ -48,7 +48,7 @@ Recall that a programmer can easily control the size of a threadgroup, but is at
 
 (Side note: [vulkan.gpuinfo.org](https://vulkan.gpuinfo.org/) is a good source for checking out which Vulkan extensions a particular device driver supports, and how well supported, in general, an extension is. To check out the latter click on `Extensions` in the top bar, and type in the name of the extension you are interested in (e.g. `VK_EXT_subgroup_size_control`). Note that `VK_EXT_subgroup_size_control` isn't commonly supported, and the situation is particularly woolly on mobile.)
 
-Therefore, we tried a "hybrid approach" specifically designed for Intel devices, which mixes the threadgroup and subgroup approaches. Our implementation of matrix transposition executes `lg(n)` (n being the number of bits in the bitmap) "shuffle operations". First, 16x16 blocks of the 32x32 matrix are shuffled across, then 8x8 blocks, and so on. To do an N/2 x N/2 block shuffle, you need at least N threads in a subgroup. Therefore, if we know N, we can shuffle the blocks smaller than N using the subgroup approach, and leave the larger blocks to the threadgroup approach. N should be available to kernels via the `gl_SubgroupSize` constant. 
+Therefore, we tried a "hybrid approach" specifically designed for Intel devices, which mixes the threadgroup and subgroup approaches. Our implementation of matrix transposition executes `lg(n)` (n being the number of bits in the bitmap) "block swap operations". First, 16x16 blocks of the 32x32 matrix are swapped with their opposing neighbours, then 8x8 blocks are swapped, and so on. To do a N/2 x N/2 block swap, you need at least N threads in a subgroup. Therefore, if we know N, we can swap blocks smaller than N using the subgroup approach, and leave the larger blocks to the threadgroup approach. N should be available to kernels via the `gl_SubgroupSize` constant. 
 
 Doing this, we discovered a bug on Intel devices! The `gl_SubgroupSize` variable reports only the maximum logical size of a subgroup (32), instead of the size selected by the shader compiler. To get around this issue, we calculated subgroup size as [`gl_WorkgroupSize/gl_NumSubgroups`](https://github.com/bzm3r/transpose-timing-tests/blob/a78b46523cecd5483ea154ccc34080f581dda413/kernels/templates/transpose-HybridShuffleAdaptive32-template.comp#L51). 
 
@@ -93,7 +93,7 @@ Since HLSL does support the subgroup ballot intrinsic, we explored the performan
 
 ![](./plots/dedicated_simd_tg_ballot_comparison.png)
 
-`Ballot32` kernel performance is poor. The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be explained by the fact that  the ballot-based kernel requires on the order of n (n being the number of bits in the matrix) instructions to execute a transpose, while the shuffle-based kernel required only on the order of lg(n) instructions. Another issue is divergence: the ballot kernel makes heavy use of branching, which leaves threads not executing the same instruction temporarily inactive.
+`Ballot32` kernel performance is poor. The loss in performance is particularly pronounced on the Nvidia devices. Part of the poor performance can be explained by the fact that  the ballot-based kernel requires on the order of n (n being the number of bits in the matrix) instructions to execute a transpose, while the shuffle-based kernel requires only on the order of lg(n) instructions. Another issue is divergence: the ballot kernel makes heavy use of branching. Since GPUs are fundamentally SIMD machines, threads which diverge from others (i.e. want to execute different instructions) due to branching are temporarily inactivated, until the other threads complete execution of their instruction. Thus, divergence should be avoided as much as possible, as it disrupts parallelism. 
 
 ## Conclusion
 
