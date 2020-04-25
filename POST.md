@@ -100,7 +100,7 @@ Since HLSL does support the subgroup ballot intrinsic, we explored the performan
 
 ![](./plots/dedicated_simd_tg_ballot_comparison.png)
 
-`Ballot32` kernel performance is poor. Part of the poor performance can be explained by the fact that  the ballot-based kernel requires on the order of n (n being the number of bits in the matrix) instructions to execute a transpose, while the shuffle-based kernel requires only on the order of lg(n) instructions. Another issue is divergence: the ballot kernel makes heavy use of branching. Since GPUs are fundamentally SIMD machines, threads which diverge from others (i.e. want to execute different instructions) due to branching are temporarily inactivated, until the other threads complete execution of their instruction. Thus, divergence should be avoided as much as possible, as it disrupts parallelism. 
+`Ballot32` kernel performance is poor. Part of the poor performance can be explained by the fact that  the ballot-based kernel requires on the order of n (n being the number of bits in the matrix) instructions to execute a transpose, while the block-swap-based kernels (threadgroup or subgroup) require only on the order of lg(n) instructions. Another issue is divergence: the ballot kernel makes heavy use of branching. Since GPUs are fundamentally SIMD machines, threads which diverge from others (i.e. want to execute different instructions) due to branching are temporarily inactivated, until the other threads complete execution of their instruction. Thus, divergence should be avoided as much as possible, as it disrupts parallelism. 
 
 ## TL;DR
 
