@@ -32,7 +32,7 @@ To compare performance, we calculate from our timing results the number of bitma
 
 We see something interesting right away: while the subgroup kernel outperforms the threadgroup-based kernel on both the AMD device and Nvidia devices, the effect is particularly pronounced on Nvidia devices. On the AMD device, the performance gain is marginal, suggesting that threadgroup shared memory is remarkably fast on AMD devices.
 
-**Mystery:** why is AMD RX 570's threadgroup shared memory competetive in performance with subgroup registers?
+**Mystery:** why is AMD RX 570's threadgroup shared memory competitive in performance with subgroup registers?
 
 We can also plot transposition rate versus varying number of bitmaps (payload) uploaded for transposition. Changing payload size varies the number of threads dispatched for the compute task. So, it provides the following information:
 * (at low dispatch size) the relative performance of a single thread on a particular device with respect to that on another device;
@@ -70,7 +70,8 @@ As expected, hybrid shuffle had performance middling between threadgroup and shu
 
 **Mystery:** why does the hybrid shuffle perform worse than pure threadgroup kernel on Intel devices? How can we explain the poor performance of the threadgroup approach at low threadgroup sizes on Intel HD 520?
 
-There is a way to shuffle bitmap matrices using only subgroup operations on Intel: transpose smaller matrices! Since the physical subgroup size on Intel devices is 8, let's tranpose 8x8 bit matrices using only subgroup operations. Note that 16 8x8 bit matrices fit inside one 32x32 bit matrix, so we need not fiddle with our data representation or reported performance metric (transpose/sec) too much. Just consider an unqualified transpose in the 8x8 setting to be be the operation of transposing 16 8x8 bit matrices at once, by one threadgroup, instead of 32x32 bit matrix. The `Shuffle8` kernel has impressive performance on Intel devices:
+There is a way to shuffle bitmap matrices using only subgroup operations on Intel: transpose smaller matrices! Since the physical subgroup size on Intel devices is 8, let's transpose 8x8 bit matrices using only subgroup operations. Note that 16 8x8 bit matrices fit inside one
+ 32x32 bit matrix, so we need not fiddle with our data representation or reported performance metric (transpose/sec) too much. Just consider an unqualified transpose in the 8x8 setting to be be the operation of transposing 16 8x8 bit matrices at once, by one threadgroup, instead of 32x32 bit matrix. The `Shuffle8` kernel has impressive performance on Intel devices:
 
 ![](./plots/intel_8vs32_comparison.png)
 
@@ -101,12 +102,14 @@ Since HLSL does support the subgroup ballot intrinsic, we explored the performan
 
 ## Conclusion
 
-Making a decision between using the threadgroup approach and the subgroup approach is not straightforward, but this post is meant to provide some data to guide this choice. Some key observations are:
+Making a decision between using the threadgroup approach and the subgroup approach is not straightforward, but this post is meant to provide some data to guide this choice. In particular the subgroup approach is competing against the fact that the threadgroup approach is easy to use, and reliably portable. 
 
-1. performance gain is very device dependant, from being marginal on our AMD device, to significant on Nvidia devices, and dramatic on Intel devices;  
-2. it can be difficult to write subgroup kernels for Intel, since it is not easy to force a particular subgroup size, and for some reason, hybrid approaches seem to have poor performance;
-3. if you're writing kernels using HLSL (as we are, for piet-dx12), then you may be missing the subgroup intrinsics necessary for a performant implementation of your kernel. 
+Our key findings are:
 
-Even though the subgroup approach can provide wins, there are caveats, while the threadgroup approach is easy to use, portable and reliable. So, if performance matters, and you are only supporting a narrow set of hardware, the subgroup approach may well be the easy choice. 
+1. subgroup approach’s performance gains are very device dependent: marginal on our AMD device, significant on Nvidia devices, and dramatic on Intel devices;  
+2. it can be difficult to write subgroup kernels for Intel, since it is not yet easy to force a particular subgroup size, and hybrid subgroup+threadgroup approaches have surprisingly poor performance;
+3. if you're writing kernels using HLSL, then you may be missing the subgroup intrinsics necessary for a performant implementation of your kernel. 
 
-Finally, we some our observations are mysterious to us. These are marked with `Mystery:` (CTRL+F for it). If you think you can shed light on these mysteries, we'd love to hear!
+So, if performance matters, you’re okay with supporting a narrow set of hardware, and are willing to use GLSL + Vulkan, then the subgroup approach is the winner.   
+
+Finally, some of our observations are mysterious to us. These are marked with `Mystery:` (CTRL+F for it). If you think you can shed light on these mysteries, we'd love to hear!
