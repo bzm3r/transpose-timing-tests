@@ -11,7 +11,7 @@ On the other hand, subgroups ("wavefronts" in DX12-land, and "warps" in CUDA-lan
 
 ![memory-hierarchy](./diagrams/memory-hierarchy.png)
 
-Subgroups are also likely to be the way of the future. Threadgroups are based on an SPMD model (single program, multiple dispatch), but most GPUs are not SPMD devices. Subgroups are based on the reality that most GPUs are SIMD (single instruction, multiple dispatch) devices. (See: [SPMD is not Intel's cup of tea](http://www.joshbarczak.com/blog/?p=1120).)
+Subgroups are also likely to be the way of the future. Threadgroups are based on an SPMD model (single program, multiple dispatch), but most GPUs are not SPMD devices. Subgroups are based on the reality that most GPUs are SIMD (single instruction, multiple dispatch) devices. (A must read for this is: [SPMD is not Intel's cup of tea](http://www.joshbarczak.com/blog/?p=1120).)
 
 However, the subgroup approach struggles with portability: it is not supported or only partially supported on older hardware and APIs. Even modern shader languages do not uniformly support subgroup operations; for example HLSL with SM 6.0 does not provide the subgroup shuffle intrinsic. 
 
