@@ -56,9 +56,7 @@ Therefore, we tried a "hybrid" kernel specifically designed for Intel devices, w
 
 Since the minimum subgroup size on Intel devices is 8, we can always do 4x4 and smaller block swaps via subgroup operations. We call a hybrid threadgroup-subgroup kernel which does this `HybridShuffle32`. It is possible to be smarter, if we can determine which subgroup size was chosen by the shader compiler, then more of the block swap operations could be done using subgroups. Subgroup size information should be available to kernels via the `gl_SubgroupSize` constant. This adaptive version of the hybrid threadgroup-subgroup kernel is called `HybridShuffleAdaptive32`. 
 
-When trying this out, we think we stumbled onto a bug on Intel devices! The `gl_SubgroupSize` variable reports only the maximum logical size of a subgroup (32), instead of the size selected by the shader compiler. To get around this issue, we calculated subgroup size as [`gl_WorkgroupSize/gl_NumSubgroups`](https://github.com/bzm3r/transpose-timing-tests/blob/a78b46523cecd5483ea154ccc34080f581dda413/kernels/templates/transpose-HybridShuffleAdaptive32-template.comp#L51). 
-
-**Mystery:** why does `gl_SubgroupSize` always report 32 on Intel HD 520 and Intel HD 630? Is this a bug?
+When trying this out, we stumbled into an issue: the `gl_SubgroupSize` variable reports only the maximum logical size of a subgroup (32), instead of the size selected by the shader compiler. To get around this issue, we calculated subgroup size as [`gl_WorkgroupSize/gl_NumSubgroups`](https://github.com/bzm3r/transpose-timing-tests/blob/a78b46523cecd5483ea154ccc34080f581dda413/kernels/templates/transpose-HybridShuffleAdaptive32-template.comp#L51). 
 
 Remember that since threadgroup shared memory access is expensive compared to subgroup register access, we expect the hybrid approach to be better than a pure threadgroup approach. Here's what the results are:
 
